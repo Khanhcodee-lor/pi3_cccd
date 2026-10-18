@@ -26,3 +26,10 @@ jobs:
           --exclude='output/'
           "$GITHUB_WORKSPACE/"
           /home/khanh/p3_cccd/
+
+      - name: Restart web server if installed
+        shell: bash
+        run: |
+          if systemctl --user cat cccd-web.service >/dev/null 2>&1; then
+            systemctl --user restart cccd-web.service
+          fi

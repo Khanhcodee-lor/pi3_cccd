@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Đọc CCCD NFC</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #152b2a;
+      --muted: #647775;
+      --line: #dce8e5;
+      --green: #126a5b;
+      --green-dark: #0d5148;
+      --mint: #e6f3ef;
+      --paper: #f4f8f6;
+      --white: #fff;
+      --error: #a33c35;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 15% 8%, rgba(117, 191, 169, .18), transparent 32rem),
+        var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 44px 0 64px; }
+    .eyebrow { color: var(--green); font-size: .76rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 10px 0 9px; font-size: clamp(2rem, 5vw, 3.3rem); letter-spacing: -.045em; line-height: 1.05; }
+    .intro { max-width: 660px; margin: 0; color: var(--muted); line-height: 1.65; }
+    .layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 20px; margin-top: 30px; align-items: start; }
+    .panel { background: var(--white); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 12px 34px rgba(31, 69, 63, .06); }
+    .scan-panel { padding: 24px; }
+    .panel-title { margin: 0 0 6px; font-size: 1.1rem; letter-spacing: -.02em; }
+    .sub { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.55; }
+    label { display: block; margin: 22px 0 8px; font-size: .87rem; font-weight: 750; }
+    input {
+      width: 100%; height: 48px; border: 1px solid #cbd9d5; border-radius: 10px;
+      padding: 0 13px; color: var(--ink); background: #fbfdfc; font: 600 1rem ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: .06em; text-transform: uppercase;
+    }
+    input:focus { outline: 3px solid rgba(18, 106, 91, .15); border-color: var(--green); }
+    .hint { margin: 8px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+    button { border: 0; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 750; }
+    .primary { width: 100%; min-height: 48px; margin-top: 17px; padding: 12px 18px; background: var(--green); color: #fff; transition: background .15s, transform .15s; }
+    .primary:hover:not(:disabled) { background: var(--green-dark); transform: translateY(-1px); }
+    button:disabled { cursor: wait; opacity: .55; }
+    .status { display: flex; align-items: flex-start; gap: 11px; margin-top: 20px; padding: 13px; border-radius: 11px; background: #f1f6f4; color: #3b5551; font-size: .88rem; line-height: 1.45; }
+    .dot { flex: none; width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; background: #97aaa5; }
+    .status.busy .dot { background: #d29b31; box-shadow: 0 0 0 4px rgba(210, 155, 49, .12); animation: pulse 1.2s infinite; }
+    .status.success .dot { background: #21805f; }
+    .status.error { background: #fff2f0; color: var(--error); }
+    .status.error .dot { background: var(--error); }
+    @keyframes pulse { 50% { opacity: .45; } }
+    .progress { height: 5px; overflow: hidden; margin-top: 10px; border-radius: 10px; background: #dce8e5; }
+    .progress > span { display: block; height: 100%; width: 25%; border-radius: inherit; background: var(--green); transition: width .2s; }
+    .privacy { margin: 16px 0 0; color: #758783; font-size: .76rem; line-height: 1.5; }
+    .result-panel { overflow: hidden; }
+    .empty { min-height: 310px; display: grid; place-items: center; padding: 36px; text-align: center; color: var(--muted); }
+    .empty-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 16px; border-radius: 18px; background: var(--mint); color: var(--green); font-size: 1.5rem; }
+    .empty strong { display: block; margin-bottom: 6px; color: var(--ink); }
+    .result { display: none; }
+    .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+    .result-head h2 { margin: 0; font-size: 1rem; }
+    .clear { padding: 8px 11px; background: #f0f5f3; color: var(--green-dark); font-size: .78rem; }
+    .result-content { display: grid; grid-template-columns: 170px 1fr; gap: 22px; padding: 22px; }
+    .photo-wrap { width: 100%; aspect-ratio: 3 / 4; overflow: hidden; display: grid; place-items: center; border-radius: 12px; background: #edf3f1; color: var(--muted); text-align: center; font-size: .78rem; }
+    .photo-wrap img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-fallback { padding: 12px; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; align-content: start; }
+    .field { min-width: 0; }
+    .field.wide { grid-column: 1 / -1; }
+    .field-label { display: block; margin-bottom: 5px; color: var(--muted); font-size: .72rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+    .field-value { display: block; overflow-wrap: anywhere; font-weight: 670; }
+    .name { font-size: 1.25rem; line-height: 1.25; }
+    details { margin: 0 22px 22px; border-top: 1px solid var(--line); padding-top: 16px; }
+    summary { cursor: pointer; color: var(--green-dark); font-size: .82rem; font-weight: 750; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font: .77rem/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    @media (max-width: 720px) {
+      main { padding-top: 30px; }
+      .layout { grid-template-columns: 1fr; }
+      .empty { min-height: 205px; }
+    }
+    @media (max-width: 460px) {
+      .result-content { grid-template-columns: 100px 1fr; gap: 15px; padding: 16px; }
+      .fields { gap: 14px 12px; }
+      .name { font-size: 1.05rem; }
+      .result-head { padding: 16px; }
+      details { margin: 0 16px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Raspberry Pi · NFC</div>
+    <h1>Đọc thông tin CCCD</h1>
+    <p class="intro">Nhập MRZ key info, đặt thẻ lên đầu đọc NFC đang nối với Pi. Thông tin đọc được sẽ hiện tại đây.</p>
+
+    <div class="layout">
+      <section class="panel scan-panel" aria-labelledby="scan-title">
+        <h2 class="panel-title" id="scan-title">Bắt đầu quét</h2>
+        <p class="sub">Giữ CCCD trên đầu đọc trong lúc xác thực và đọc dữ liệu.</p>
+        <form id="scanForm">
+          <label for="mrzKey">MRZ key info · 24 ký tự</label>
+          <input id="mrzKey" name="mrz_key_info" type="password" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••" required>
+          <p class="hint">Ghép số giấy tờ, ngày sinh và ngày hết hạn cùng ký tự kiểm tra theo MRZ. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
+          <button class="primary" id="startButton" type="submit">Quét thẻ</button>
+        </form>
+        <div class="status" id="status" role="status" aria-live="polite">
+          <span class="dot"></span>
+          <div><span id="statusText">Nhập MRZ key info rồi bắt đầu quét.</span><div class="progress" id="progress" hidden><span id="progressBar"></span></div></div>
+        </div>
+        <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Thông tin thẻ nằm trong bộ nhớ khi server chạy; ảnh trích xuất được lưu trong thư mục <code>output/</code>.</p>
+      </section>
+
+      <section class="panel result-panel" aria-live="polite">
+        <div class="empty" id="emptyState">
+          <div><div class="empty-icon" aria-hidden="true">▣</div><strong>Chưa có dữ liệu thẻ</strong><span>Kết quả sẽ hiện sau khi quét thành công.</span></div>
+        </div>
+        <div class="result" id="result">
+          <div class="result-head"><h2>Thông tin trên thẻ</h2><button type="button" class="clear" id="clearButton">Xóa kết quả</button></div>
+          <div class="result-content">
+            <div class="photo-wrap" id="photoWrap"><span class="photo-fallback">Không có ảnh chân dung</span></div>
+            <div class="fields" id="fields"></div>
+          </div>
+          <details><summary>Xem MRZ gốc</summary><pre id="rawMrz"></pre></details>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const form = document.getElementById('scanForm');
+    const keyInput = document.getElementById('mrzKey');
+    const startButton = document.getElementById('startButton');
+    const statusBox = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const progress = document.getElementById('progress');
+    const progressBar = document.getElementById('progressBar');
+    const emptyState = document.getElementById('emptyState');
+    const result = document.getElementById('result');
+    let polling = false;
+
+    function setStatus(state) {
+      statusBox.className = 'status';
+      if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status)) statusBox.classList.add('busy');
+      if (state.status === 'done') statusBox.classList.add('success');
+      if (state.status === 'error') statusBox.classList.add('error');
+      statusText.textContent = state.message || '';
+      startButton.disabled = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status);
+      if (state.progress) {
+        progress.hidden = false;
+        progressBar.style.width = `${state.progress.percent}%`;
+      } else {
+        progress.hidden = true;
+        progressBar.style.width = '25%';
+      }
+      if (state.status === 'done' && state.data) showResult(state);
+      if (state.status === 'idle') {
+        result.style.display = 'none';
+        emptyState.style.display = 'grid';
+      }
+    }
+
+    function addField(label, value, wide = false, name = false) {
+      const box = document.createElement('div');
+      box.className = `field${wide ? ' wide' : ''}`;
+      const title = document.createElement('span');
+      title.className = 'field-label';
+      title.textContent = label;
+      const content = document.createElement('span');
+      content.className = `field-value${name ? ' name' : ''}`;
+      content.textContent = value || 'Không có dữ liệu';
+      box.append(title, content);
+      document.getElementById('fields').append(box);
+    }
+
+    function showResult(state) {
+      const data = state.data;
+      document.getElementById('fields').replaceChildren();
+      addField('Họ và tên', data.full_name, true, true);
+      addField('Số giấy tờ', data.document_number);
+      addField('Giới tính', data.sex);
+      addField('Ngày sinh', data.date_of_birth);
+      addField('Quốc tịch', data.nationality);
+      addField('Ngày hết hạn', data.expiry_date);
+      addField('Loại giấy tờ', data.document_type);
+      addField('Nơi cấp', data.issuing_country);
+      document.getElementById('rawMrz').textContent = data.mrz || (state.mrz_lines || []).join('\n');
+
+      const photoWrap = document.getElementById('photoWrap');
+      photoWrap.replaceChildren();
+      const image = document.createElement('img');
+      image.alt = 'Ảnh chân dung trên CCCD';
+      image.src = `/api/photo?v=${Date.now()}`;
+      image.onerror = () => {
+        photoWrap.replaceChildren();
+        const message = document.createElement('span');
+        message.className = 'photo-fallback';
+        message.textContent = 'Thẻ không có ảnh hoặc ảnh dùng định dạng trình duyệt chưa hỗ trợ.';
+        photoWrap.append(message);
+      };
+      photoWrap.append(image);
+      emptyState.style.display = 'none';
+      result.style.display = 'block';
+    }
+
+    async function pollStatus() {
+      if (polling) return;
+      polling = true;
+      try {
+        const response = await fetch('/api/status', { cache: 'no-store' });
+        const state = await response.json();
+        setStatus(state);
+        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status)) {
+          setTimeout(() => { polling = false; pollStatus(); }, 700);
+          return;
+        }
+      } catch (_) {
+        statusText.textContent = 'Mất kết nối tới web server trên Pi.';
+      }
+      polling = false;
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const mrzKey = keyInput.value.replace(/\s/g, '').toUpperCase();
+      if (!/^[0-9A-Z<]{24}$/.test(mrzKey)) {
+        setStatus({ status: 'error', message: 'MRZ key info cần đúng 24 ký tự.' });
+        keyInput.focus();
+        return;
+      }
+      startButton.disabled = true;
+      setStatus({ status: 'waiting_for_card', message: 'Đang khởi động đầu đọc…' });
+      try {
+        const response = await fetch('/api/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ mrz_key_info: mrzKey })
+        });
+        keyInput.value = '';
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không bắt đầu được lượt quét.');
+        await pollStatus();
+      } catch (error) {
+        setStatus({ status: 'error', message: error.message });
+      }
+    });
+
+    document.getElementById('clearButton').addEventListener('click', async () => {
+      await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      setStatus({ status: 'idle', message: 'Đã xóa thông tin khỏi trang.' });
+    });
+
+    pollStatus();
+  </script>
+</body>
+</html>
