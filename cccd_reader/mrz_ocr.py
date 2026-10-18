@@ -124,7 +124,16 @@ def _ocr(
         )
         for crop_index, crop in enumerate(crops):
             gray = ImageOps.autocontrast(ImageOps.grayscale(crop))
-            if gray.width < 1400:
+            if fast:
+                # 720p webcam frames already have enough detail for MRZ OCR.
+                # Only enlarge lower-resolution streams; upscaling 720p adds
+                # work on the Pi without restoring detail.
+                if gray.width < 800:
+                    gray = gray.resize((gray.width * 2, gray.height * 2), Image.Resampling.LANCZOS)
+                elif gray.width > 2000:
+                    ratio = 2000 / gray.width
+                    gray = gray.resize((2000, int(gray.height * ratio)), Image.Resampling.LANCZOS)
+            elif gray.width < 1400:
                 scale = min(3, max(2, 1400 // max(1, gray.width)))
                 gray = gray.resize((gray.width * scale, gray.height * scale), Image.Resampling.LANCZOS)
             elif gray.width > 2600:
