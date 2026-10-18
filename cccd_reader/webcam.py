@@ -139,7 +139,7 @@ class WebcamManager:
                     "-fflags", "+nobuffer",
                     "-f", "v4l2",
                     "-input_format", "mjpeg",
-                    "-framerate", "15",
+                    "-framerate", "30",
                     "-video_size", "640x480",
                     "-i", device,
                     "-an", "-sn", "-dn",
