@@ -1,0 +1,28 @@
+name: Deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Sync project to Pi
+        run: >-
+          rsync -a --delete
+          --exclude='.git/'
+          --exclude='.venv/'
+          --exclude='output/'
+          "$GITHUB_WORKSPACE/"
+          /home/khanh/p3_cccd/
