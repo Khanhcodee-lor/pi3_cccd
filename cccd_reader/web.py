@@ -180,8 +180,25 @@ class WebHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._send_json(400, {"error": "Content-Length không hợp lệ."})
             return
-        if length < 0 or length > 4096:
+        if length < 0 or length > (8 * 1024 * 1024 if path == "/api/mrz-ocr" else 4096):
             self._send_json(413, {"error": "Yêu cầu quá lớn."})
+            return
+        if path == "/api/mrz-ocr":
+            if length == 0:
+                self._send_json(400, {"error": "Chưa nhận được ảnh."})
+                return
+            image_bytes = self.rfile.read(length)
+            try:
+                from .mrz_ocr import read_mrz_key
+
+                key = read_mrz_key(image_bytes)
+            except RuntimeError as exc:
+                self._send_json(503, {"error": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(422, {"error": str(exc)})
+                return
+            self._send_json(200, {"mrz_key_info": key, "message": "Đã nhận diện MRZ. Kiểm tra mã rồi bấm Quét thẻ."})
             return
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")

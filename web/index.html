@@ -45,6 +45,9 @@
     }
     input:focus { outline: 3px solid rgba(18, 106, 91, .15); border-color: var(--green); }
     .hint { margin: 8px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+    .photo-button { width: 100%; min-height: 44px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--line); background: #f5faf8; color: var(--green-dark); }
+    .photo-button:hover:not(:disabled) { background: var(--mint); }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     button { border: 0; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 750; }
     .primary { width: 100%; min-height: 48px; margin-top: 17px; padding: 12px 18px; background: var(--green); color: #fff; transition: background .15s, transform .15s; }
     .primary:hover:not(:disabled) { background: var(--green-dark); transform: translateY(-1px); }
@@ -98,7 +101,7 @@
   <main>
     <div class="eyebrow">Raspberry Pi · NFC</div>
     <h1>Đọc thông tin CCCD</h1>
-    <p class="intro">Nhập MRZ key info, đặt thẻ lên đầu đọc NFC đang nối với Pi. Thông tin đọc được sẽ hiện tại đây.</p>
+    <p class="intro">Đọc mã MRZ bằng camera hoặc nhập tay, sau đó đặt thẻ lên đầu đọc NFC đang nối với Pi.</p>
 
     <div class="layout">
       <section class="panel scan-panel" aria-labelledby="scan-title">
@@ -106,8 +109,12 @@
         <p class="sub">Giữ CCCD trên đầu đọc trong lúc xác thực và đọc dữ liệu.</p>
         <form id="scanForm">
           <label for="mrzKey">MRZ key info · 24 ký tự</label>
-          <input id="mrzKey" name="mrz_key_info" type="password" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••" required>
+          <input id="mrzKey" name="mrz_key_info" type="text" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••" required>
           <p class="hint">Ghép số giấy tờ, ngày sinh và ngày hết hạn cùng ký tự kiểm tra theo MRZ. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
+          <label class="visually-hidden" for="mrzPhoto">Chụp hoặc chọn ảnh mặt sau CCCD</label>
+          <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+          <button class="photo-button" id="photoButton" type="button">Chụp ảnh mặt sau để đọc MRZ</button>
+          <p class="hint">Điện thoại sẽ mở camera. Ảnh được gửi tới Pi để nhận dạng, không lưu thành tệp; kiểm tra mã nhận dạng trước khi quét NFC.</p>
           <button class="primary" id="startButton" type="submit">Quét thẻ</button>
         </form>
         <div class="status" id="status" role="status" aria-live="polite">
@@ -136,6 +143,8 @@
     const form = document.getElementById('scanForm');
     const keyInput = document.getElementById('mrzKey');
     const startButton = document.getElementById('startButton');
+    const photoButton = document.getElementById('photoButton');
+    const photoInput = document.getElementById('mrzPhoto');
     const statusBox = document.getElementById('status');
     const statusText = document.getElementById('statusText');
     const progress = document.getElementById('progress');
@@ -151,6 +160,7 @@
       if (state.status === 'error') statusBox.classList.add('error');
       statusText.textContent = state.message || '';
       startButton.disabled = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status);
+      photoButton.disabled = startButton.disabled;
       if (state.progress) {
         progress.hidden = false;
         progressBar.style.width = `${state.progress.percent}%`;
@@ -248,6 +258,32 @@
         await pollStatus();
       } catch (error) {
         setStatus({ status: 'error', message: error.message });
+      }
+    });
+
+    photoButton.addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', async () => {
+      const image = photoInput.files && photoInput.files[0];
+      if (!image) return;
+      photoButton.disabled = true;
+      setStatus({ status: 'authenticating', message: 'Đang nhận dạng MRZ từ ảnh trên Pi…' });
+      try {
+        const response = await fetch('/api/mrz-ocr', {
+          method: 'POST',
+          headers: { 'Content-Type': image.type || 'application/octet-stream' },
+          cache: 'no-store',
+          body: image
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không đọc được MRZ từ ảnh.');
+        keyInput.value = payload.mrz_key_info;
+        setStatus({ status: 'idle', message: payload.message });
+        keyInput.focus();
+      } catch (error) {
+        setStatus({ status: 'error', message: error.message });
+      } finally {
+        photoInput.value = '';
+        photoButton.disabled = false;
       }
     });
 
