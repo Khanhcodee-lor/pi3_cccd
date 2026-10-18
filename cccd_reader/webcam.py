@@ -3,10 +3,39 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import threading
 import time
+import os
 
-from .mrz_ocr import capture_camera_image, read_mrz_key_live
+from .mrz_ocr import read_mrz_key_live
+
+
+def _jpeg_frames(stream, stop_event: threading.Event):
+    """Yield complete JPEGs from fswebcam's continuous stdout stream."""
+    buffer = bytearray()
+    while not stop_event.is_set():
+        chunk = stream.read(65536)
+        if not chunk:
+            return
+        buffer.extend(chunk)
+
+        while True:
+            start = buffer.find(b"\xff\xd8")
+            if start < 0:
+                # Keep one byte in case the next read completes an SOI marker.
+                buffer[:] = buffer[-1:]
+                break
+            if start:
+                del buffer[:start]
+            end = buffer.find(b"\xff\xd9", 2)
+            if end < 0:
+                if len(buffer) > 4 * 1024 * 1024:
+                    buffer.clear()
+                break
+            frame = bytes(buffer[: end + 2])
+            del buffer[: end + 2]
+            yield frame
 
 
 class WebcamManager:
@@ -17,6 +46,7 @@ class WebcamManager:
         self._frame: bytes | None = None
         self._sequence = 0
         self._stop_event: threading.Event | None = None
+        self._process: subprocess.Popen | None = None
         self._state = {
             "status": "camera_stopped",
             "message": "Camera Pi đang tắt.",
@@ -58,6 +88,8 @@ class WebcamManager:
         with self._condition:
             if self._stop_event is not None:
                 self._stop_event.set()
+            process = self._process
+            self._process = None
             self._frame = None
             self._state = {
                 "status": "camera_stopped",
@@ -65,45 +97,96 @@ class WebcamManager:
                 "mrz_key_info": None,
             }
             self._condition.notify_all()
+        self._terminate(process)
+
+    @staticmethod
+    def _terminate(process: subprocess.Popen | None) -> None:
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
+    def _set_camera_error(self, stop_event: threading.Event, message: str) -> None:
+        with self._condition:
+            if self._stop_event is not stop_event:
+                return
+            process = self._process
+            self._process = None
+            self._frame = None
+            self._state = {
+                "status": "camera_error",
+                "message": message,
+                "mrz_key_info": None,
+            }
+            stop_event.set()
+            self._condition.notify_all()
+        self._terminate(process)
 
     def _capture_loop(self, stop_event: threading.Event) -> None:
         deadline = time.monotonic() + self.MAX_SESSION_SECONDS
-        while not stop_event.is_set():
-            if time.monotonic() >= deadline:
-                with self._condition:
-                    if self._stop_event is stop_event:
-                        self._frame = None
-                        self._state = {
-                            "status": "camera_stopped",
-                            "message": "Camera tự tắt sau 2 phút. Bấm bật lại nếu cần quét tiếp.",
-                            "mrz_key_info": None,
-                        }
-                        stop_event.set()
-                        self._condition.notify_all()
-                return
-            try:
-                image = capture_camera_image()
-            except RuntimeError as exc:
-                with self._condition:
-                    if self._stop_event is stop_event:
-                        self._frame = None
-                        self._state = {
-                            "status": "camera_error",
-                            "message": str(exc),
-                            "mrz_key_info": None,
-                        }
-                        stop_event.set()
-                        self._condition.notify_all()
-                return
-
+        device = os.environ.get("CCCD_CAMERA_DEVICE", "/dev/video0")
+        process: subprocess.Popen | None = None
+        try:
+            process = subprocess.Popen(
+                [
+                    shutil.which("fswebcam") or "fswebcam",
+                    "--device", device,
+                    "--resolution", "640x480",
+                    "--loop", "0.2",
+                    "--no-banner",
+                    "--jpeg", "75",
+                    "-",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+            )
             with self._condition:
-                if self._stop_event is not stop_event or stop_event.is_set():
+                if stop_event.is_set() or self._stop_event is not stop_event:
                     return
-                self._frame = image
-                self._sequence += 1
-                self._state["message"] = "Đưa mặt sau CCCD vào khung hình, giữ thẻ nằm ngang; Pi đang tự tìm MRZ…"
-                self._condition.notify_all()
-            stop_event.wait(0.25)
+                self._process = process
+
+            assert process.stdout is not None
+            for image in _jpeg_frames(process.stdout, stop_event):
+                if stop_event.is_set():
+                    return
+                if time.monotonic() >= deadline:
+                    with self._condition:
+                        if self._stop_event is stop_event:
+                            self._frame = None
+                            self._state = {
+                                "status": "camera_stopped",
+                                "message": "Camera tự tắt sau 2 phút. Bấm bật lại nếu cần quét tiếp.",
+                                "mrz_key_info": None,
+                            }
+                            stop_event.set()
+                            self._condition.notify_all()
+                    return
+
+                with self._condition:
+                    if self._stop_event is not stop_event or stop_event.is_set():
+                        return
+                    self._frame = image
+                    self._sequence += 1
+                    self._state["message"] = "Đưa mặt sau CCCD vào khung hình, giữ thẻ nằm ngang; Pi đang tự tìm MRZ…"
+                    self._condition.notify_all()
+
+            if not stop_event.is_set():
+                self._set_camera_error(
+                    stop_event,
+                    f"Luồng webcam từ {device} đã dừng. Kiểm tra webcam và quyền truy cập nhóm video trên Pi.",
+                )
+        except OSError as exc:
+            self._set_camera_error(stop_event, f"Không mở được webcam {device}: {exc}")
+        finally:
+            with self._condition:
+                if self._process is process:
+                    self._process = None
+            self._terminate(process)
 
     def _recognize_loop(self, stop_event: threading.Event) -> None:
         last_sequence = 0
@@ -130,16 +213,7 @@ class WebcamManager:
             except ValueError:
                 continue
             except RuntimeError as exc:
-                with self._condition:
-                    if self._stop_event is stop_event:
-                        self._frame = None
-                        self._state = {
-                            "status": "camera_error",
-                            "message": str(exc),
-                            "mrz_key_info": None,
-                        }
-                        stop_event.set()
-                        self._condition.notify_all()
+                self._set_camera_error(stop_event, str(exc))
                 return
 
             with self._condition:
