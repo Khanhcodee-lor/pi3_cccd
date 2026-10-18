@@ -200,6 +200,23 @@ class WebHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(200, {"mrz_key_info": key, "message": "Đã nhận diện MRZ. Kiểm tra mã rồi bấm Quét thẻ."})
             return
+        if path == "/api/mrz-camera":
+            if length:
+                self.rfile.read(length)
+                self._send_json(400, {"error": "Endpoint webcam không nhận nội dung gửi lên."})
+                return
+            try:
+                from .mrz_ocr import read_mrz_key_from_camera
+
+                key = read_mrz_key_from_camera()
+            except RuntimeError as exc:
+                self._send_json(503, {"error": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(422, {"error": str(exc)})
+                return
+            self._send_json(200, {"mrz_key_info": key, "message": "Đã đọc MRZ bằng webcam Pi. Kiểm tra mã rồi bấm Quét thẻ."})
+            return
         try:
             payload = json.loads(self.rfile.read(length) or b"{}")
         except (json.JSONDecodeError, UnicodeDecodeError):

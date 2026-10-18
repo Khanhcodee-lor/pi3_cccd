@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from io import BytesIO
+import os
 import re
 import shutil
 import subprocess
+import tempfile
 import warnings
 from collections.abc import Iterator
+from pathlib import Path
 
 
 _ALLOWED = re.compile(r"[^A-Z0-9<]")
@@ -145,3 +148,38 @@ def read_mrz_key(image_bytes: bytes) -> str:
         if key:
             return key
     raise ValueError("Chưa đọc chắc được MRZ. Hãy chụp thẳng, đủ sáng và để rõ cả 2 dòng đầu của mã MRZ.")
+
+
+def read_mrz_key_from_camera() -> str:
+    """Chụp một ảnh từ webcam USB nối với Pi rồi nhận dạng MRZ."""
+    executable = shutil.which("fswebcam")
+    if not executable:
+        raise RuntimeError("Pi chưa cài fswebcam. Chạy: sudo apt install fswebcam")
+
+    device = os.environ.get("CCCD_CAMERA_DEVICE", "/dev/video0")
+    try:
+        with tempfile.TemporaryDirectory(prefix="cccd-mrz-") as temp_dir:
+            image_path = Path(temp_dir) / "capture.jpg"
+            result = subprocess.run(
+                [
+                    executable,
+                    "--device", device,
+                    "--resolution", "1280x720",
+                    "--skip", "5",
+                    "--no-banner",
+                    str(image_path),
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=20,
+                check=False,
+            )
+            if result.returncode != 0 or not image_path.is_file() or image_path.stat().st_size == 0:
+                raise RuntimeError(
+                    f"Không chụp được từ {device}. Kiểm tra webcam và quyền truy cập nhóm video trên Pi."
+                )
+            image_bytes = image_path.read_bytes()
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Webcam Pi không phản hồi. Kiểm tra webcam có đang được ứng dụng khác sử dụng không.") from exc
+
+    return read_mrz_key(image_bytes)
