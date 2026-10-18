@@ -16,10 +16,10 @@ python3 -m venv .venv
 
 Web app chạy trên Pi và dùng đầu đọc NFC đang cắm USB. Khi quét, trang hiển thị các trường có trong MRZ và ảnh chân dung nếu trình duyệt hỗ trợ định dạng ảnh trên thẻ. BAC yêu cầu MRZ key info gồm đúng 24 ký tự. Có thể nhập mã bằng tay, bật webcam USB cắm vào Pi để xem trước và tự nhận diện MRZ, hoặc chọn ảnh mặt sau CCCD. Webcam được giữ mở liên tục ở 640×480 để giảm độ trễ; OCR chạy riêng trên Pi, kiểm tra ba check digit ICAO rồi điền mã vào ô để người dùng xem lại trước khi quét NFC. Ảnh webcam chỉ nằm tạm trong bộ nhớ khi xử lý. Giữ nguyên ký tự `<`, bỏ khoảng trắng.
 
-Cài Tesseract OCR và `fswebcam` để Pi đọc MRZ bằng webcam USB:
+Cài Tesseract OCR, `ffmpeg` để stream webcam và `fswebcam` cho chức năng chụp ảnh đơn:
 
 ```bash
-sudo apt install tesseract-ocr fswebcam
+sudo apt install tesseract-ocr ffmpeg fswebcam
 ```
 
 Mặc định ứng dụng chụp từ `/dev/video0`. Nếu service báo không có quyền, thêm user `khanh` vào nhóm `video` bằng `sudo usermod -aG video khanh`, sau đó khởi động lại Pi. Có thể chọn thiết bị khác bằng biến `CCCD_CAMERA_DEVICE` trong `~/.config/p3_cccd/web.env`.

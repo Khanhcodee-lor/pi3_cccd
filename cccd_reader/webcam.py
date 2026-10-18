@@ -62,8 +62,8 @@ class WebcamManager:
             return self._frame
 
     def start(self) -> tuple[bool, str]:
-        if not shutil.which("fswebcam"):
-            return False, "Pi chưa cài fswebcam. Chạy: sudo apt install fswebcam"
+        if not shutil.which("ffmpeg"):
+            return False, "Pi chưa cài ffmpeg. Chạy: sudo apt install ffmpeg"
         if not shutil.which("tesseract"):
             return False, "Pi chưa cài Tesseract OCR. Chạy: sudo apt install tesseract-ocr"
 
@@ -133,13 +133,20 @@ class WebcamManager:
         try:
             process = subprocess.Popen(
                 [
-                    shutil.which("fswebcam") or "fswebcam",
-                    "--device", device,
-                    "--resolution", "640x480",
-                    "--loop", "0.2",
-                    "--no-banner",
-                    "--jpeg", "75",
-                    "-",
+                    shutil.which("ffmpeg") or "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-fflags", "+nobuffer",
+                    "-f", "v4l2",
+                    "-input_format", "mjpeg",
+                    "-framerate", "15",
+                    "-video_size", "640x480",
+                    "-i", device,
+                    "-an", "-sn", "-dn",
+                    "-c:v", "copy",
+                    "-f", "image2pipe",
+                    "-flush_packets", "1",
+                    "pipe:1",
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
