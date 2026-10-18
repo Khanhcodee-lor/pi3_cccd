@@ -30,6 +30,11 @@ jobs:
       - name: Restart web server if installed
         shell: bash
         run: |
-          if systemctl --user cat cccd-web.service >/dev/null 2>&1; then
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+          if [[ -f "$HOME/.config/systemd/user/cccd-web.service" ]]; then
+            systemctl --user daemon-reload
             systemctl --user restart cccd-web.service
+          else
+            echo "User service cccd-web.service chưa được cài; bỏ qua restart."
           fi
