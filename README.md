@@ -14,7 +14,7 @@ python3 -m venv .venv
 
 ## Web server xem thông tin thẻ
 
-Web app chạy trên Pi và dùng đầu đọc NFC đang cắm USB. Khi quét, trang hiển thị các trường có trong MRZ và ảnh chân dung nếu trình duyệt hỗ trợ định dạng ảnh trên thẻ. BAC yêu cầu MRZ key info gồm đúng 24 ký tự. Có thể nhập mã bằng tay, chụp bằng webcam USB cắm vào Pi, hoặc chọn ảnh mặt sau CCCD; OCR chạy trên Pi, kiểm tra ba check digit ICAO rồi điền mã vào ô để người dùng xem lại trước khi quét NFC. Ảnh webcam chỉ nằm tạm trong thư mục hệ thống khi xử lý và được xóa sau đó. Giữ nguyên ký tự `<`, bỏ khoảng trắng.
+Web app chạy trên Pi và dùng đầu đọc NFC đang cắm USB. Khi quét, trang hiển thị các trường có trong MRZ và ảnh chân dung nếu trình duyệt hỗ trợ định dạng ảnh trên thẻ. BAC yêu cầu MRZ key info gồm đúng 24 ký tự. Có thể nhập mã bằng tay, bật webcam USB cắm vào Pi để xem trước và tự nhận diện MRZ, hoặc chọn ảnh mặt sau CCCD. OCR chạy trên Pi, kiểm tra ba check digit ICAO rồi điền mã vào ô để người dùng xem lại trước khi quét NFC. Ảnh webcam chỉ nằm tạm trong thư mục hệ thống khi xử lý và được xóa sau đó. Giữ nguyên ký tự `<`, bỏ khoảng trắng.
 
 Cài Tesseract OCR và `fswebcam` để Pi đọc MRZ bằng webcam USB:
 

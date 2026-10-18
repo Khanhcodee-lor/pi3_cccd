@@ -49,6 +49,8 @@
     .photo-button:hover:not(:disabled) { background: var(--mint); }
     .camera-button { width: 100%; min-height: 48px; margin-top: 14px; padding: 12px 18px; background: var(--green); color: #fff; }
     .camera-button:hover:not(:disabled) { background: var(--green-dark); }
+    .camera-preview { overflow: hidden; margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: #152b2a; }
+    .camera-preview img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; }
     .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     button { border: 0; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 750; }
     .primary { width: 100%; min-height: 48px; margin-top: 17px; padding: 12px 18px; background: var(--green); color: #fff; transition: background .15s, transform .15s; }
@@ -113,8 +115,9 @@
           <label for="mrzKey">MRZ key info · 24 ký tự</label>
           <input id="mrzKey" name="mrz_key_info" type="text" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••" required>
           <p class="hint">Ghép số giấy tờ, ngày sinh và ngày hết hạn cùng ký tự kiểm tra theo MRZ. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
-          <button class="camera-button" id="cameraButton" type="button">Chụp bằng webcam cắm vào Pi</button>
-          <p class="hint">Đặt mặt sau CCCD trước webcam của Pi rồi bấm nút. Pi chụp một khung hình và tự nhận dạng mã MRZ.</p>
+          <button class="camera-button" id="cameraButton" type="button">Bật camera Pi</button>
+          <div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ webcam Pi"></div>
+          <p class="hint">Khi camera bật, đưa mặt sau CCCD vào khung hình và giữ yên. Pi tự nhận diện rồi điền MRZ vào ô.</p>
           <label class="visually-hidden" for="mrzPhoto">Chọn ảnh mặt sau CCCD</label>
           <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
           <button class="photo-button" id="photoButton" type="button">Hoặc chọn ảnh từ điện thoại / máy tính</button>
@@ -150,6 +153,8 @@
     const photoButton = document.getElementById('photoButton');
     const cameraButton = document.getElementById('cameraButton');
     const photoInput = document.getElementById('mrzPhoto');
+    const cameraPreview = document.getElementById('cameraPreview');
+    const cameraImage = document.getElementById('cameraImage');
     const statusBox = document.getElementById('status');
     const statusText = document.getElementById('statusText');
     const progress = document.getElementById('progress');
@@ -157,16 +162,29 @@
     const emptyState = document.getElementById('emptyState');
     const result = document.getElementById('result');
     let polling = false;
+    let cameraActive = false;
+    let cameraFrameBusy = false;
+    let cameraFrameUrl = null;
+
+    function clearCameraPreview() {
+      cameraPreview.hidden = true;
+      cameraImage.removeAttribute('src');
+      if (cameraFrameUrl) URL.revokeObjectURL(cameraFrameUrl);
+      cameraFrameUrl = null;
+    }
 
     function setStatus(state) {
       statusBox.className = 'status';
-      if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status)) statusBox.classList.add('busy');
-      if (state.status === 'done') statusBox.classList.add('success');
-      if (state.status === 'error') statusBox.classList.add('error');
+      const scanBusy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status);
+      const busy = scanBusy || state.status === 'camera_scanning';
+      if (busy) statusBox.classList.add('busy');
+      if (state.status === 'done' || state.status === 'camera_done') statusBox.classList.add('success');
+      if (state.status === 'error' || state.status === 'camera_error') statusBox.classList.add('error');
       statusText.textContent = state.message || '';
-      startButton.disabled = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status);
-      photoButton.disabled = startButton.disabled;
-      cameraButton.disabled = startButton.disabled;
+      startButton.disabled = scanBusy || state.status === 'camera_scanning';
+      photoButton.disabled = scanBusy || state.status === 'camera_scanning';
+      cameraButton.disabled = scanBusy || (state.status === 'authenticating' && !cameraActive);
+      cameraButton.textContent = cameraActive ? 'Dừng camera' : 'Bật camera Pi';
       if (state.progress) {
         progress.hidden = false;
         progressBar.style.width = `${state.progress.percent}%`;
@@ -294,19 +312,82 @@
     });
 
     cameraButton.addEventListener('click', async () => {
+      if (cameraActive) {
+        cameraActive = false;
+        clearCameraPreview();
+        await fetch('/api/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
+        setStatus({ status: 'idle', message: 'Đã tắt camera Pi.' });
+        return;
+      }
       cameraButton.disabled = true;
-      setStatus({ status: 'authenticating', message: 'Webcam Pi đang chụp; đang nhận dạng MRZ…' });
+      setStatus({ status: 'authenticating', message: 'Đang bật camera Pi…' });
       try {
-        const response = await fetch('/api/mrz-camera', { method: 'POST', cache: 'no-store' });
+        const response = await fetch('/api/camera/start', { method: 'POST', cache: 'no-store' });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Không đọc được MRZ từ webcam Pi.');
-        keyInput.value = payload.mrz_key_info;
-        setStatus({ status: 'idle', message: payload.message });
-        keyInput.focus();
+        if (!response.ok) throw new Error(payload.error || 'Không bật được webcam Pi.');
+        cameraActive = true;
+        cameraPreview.hidden = false;
+        setStatus({ status: 'camera_scanning', message: payload.message });
+        refreshCameraFrame();
+        pollCameraRecognition();
       } catch (error) {
         setStatus({ status: 'error', message: error.message });
+      }
+    });
+
+    async function refreshCameraFrame() {
+      if (!cameraActive || cameraFrameBusy) return;
+      cameraFrameBusy = true;
+      try {
+        const response = await fetch(`/api/camera/frame?v=${Date.now()}`, { cache: 'no-store' });
+        if (response.ok) {
+          const nextUrl = URL.createObjectURL(await response.blob());
+          const previousUrl = cameraFrameUrl;
+          cameraFrameUrl = nextUrl;
+          cameraImage.onload = () => { if (previousUrl) URL.revokeObjectURL(previousUrl); };
+          cameraImage.src = nextUrl;
+        }
+      } catch (_) {
+        // The camera may need a moment to produce its first frame.
       } finally {
-        cameraButton.disabled = false;
+        cameraFrameBusy = false;
+        if (cameraActive) setTimeout(refreshCameraFrame, 350);
+      }
+    }
+
+    async function pollCameraRecognition() {
+      if (!cameraActive) return;
+      try {
+        const response = await fetch('/api/camera/status', { cache: 'no-store' });
+        const state = await response.json();
+        if (state.status === 'camera_done') {
+          cameraActive = false;
+          keyInput.value = state.mrz_key_info || '';
+          clearCameraPreview();
+          setStatus({ status: 'idle', message: state.message });
+          keyInput.focus();
+          return;
+        }
+        if (state.status === 'camera_error' || state.status === 'camera_stopped') {
+          cameraActive = false;
+          clearCameraPreview();
+          setStatus({ status: state.status === 'camera_error' ? 'error' : 'idle', message: state.message });
+          return;
+        }
+        setStatus(state);
+      } catch (_) {
+        cameraActive = false;
+        clearCameraPreview();
+        await fetch('/api/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
+        setStatus({ status: 'error', message: 'Mất kết nối tới webcam Pi.' });
+        return;
+      }
+      if (cameraActive) setTimeout(pollCameraRecognition, 650);
+    }
+
+    window.addEventListener('pagehide', () => {
+      if (cameraActive) {
+        fetch('/api/camera/stop', { method: 'POST', keepalive: true, cache: 'no-store' }).catch(() => {});
       }
     });
 

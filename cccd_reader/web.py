@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .scanner import ScanResult, scan_card
+from .webcam import WebcamManager
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_ROOT = PROJECT_ROOT / "web"
@@ -168,6 +169,14 @@ class WebHandler(BaseHTTPRequestHandler):
                 self._send(404, b"No photo", "text/plain; charset=utf-8")
             else:
                 self._send(200, photo[0], photo[1])
+        elif path == "/api/camera/status":
+            self._send_json(200, self.server.webcam_manager.snapshot())
+        elif path == "/api/camera/frame":
+            frame = self.server.webcam_manager.frame()
+            if frame is None:
+                self._send(404, b"No camera frame", "text/plain; charset=utf-8")
+            else:
+                self._send(200, frame, "image/jpeg")
         else:
             self._send(404, b"Not found", "text/plain; charset=utf-8")
 
@@ -182,6 +191,21 @@ class WebHandler(BaseHTTPRequestHandler):
             return
         if length < 0 or length > (8 * 1024 * 1024 if path == "/api/mrz-ocr" else 4096):
             self._send_json(413, {"error": "Yêu cầu quá lớn."})
+            return
+        if path == "/api/camera/start":
+            if length:
+                self.rfile.read(length)
+            started, message = self.server.webcam_manager.start()
+            if not started:
+                self._send_json(409 if message.startswith("Camera Pi đang chạy") else 503, {"error": message})
+                return
+            self._send_json(202, {"message": message})
+            return
+        if path == "/api/camera/stop":
+            if length:
+                self.rfile.read(length)
+            self.server.webcam_manager.stop()
+            self._send_json(200, {"message": "Camera Pi đã tắt."})
             return
         if path == "/api/mrz-ocr":
             if length == 0:
@@ -249,6 +273,7 @@ class CCCDHTTPServer(ThreadingHTTPServer):
 
     def __init__(self, address, handler, password: str | None = None):
         self.scan_manager = ScanManager()
+        self.webcam_manager = WebcamManager()
         self.password = password
         super().__init__(address, handler)
 

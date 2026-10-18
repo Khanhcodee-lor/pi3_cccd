@@ -88,7 +88,12 @@ def _key_from_text(text: str) -> str | None:
     return None
 
 
-def _ocr(image_bytes: bytes) -> Iterator[str]:
+def _ocr(
+    image_bytes: bytes,
+    *,
+    rotations: tuple[int, ...] = (0, 90, 180, 270),
+    fast: bool = False,
+) -> Iterator[str]:
     try:
         from PIL import Image, ImageOps
     except ImportError as exc:
@@ -106,13 +111,17 @@ def _ocr(image_bytes: bytes) -> Iterator[str]:
                 raise ValueError("Ảnh quá lớn; hãy chụp hoặc chọn ảnh nhỏ hơn 20 megapixel.")
             image = ImageOps.exif_transpose(image).convert("RGB")
             image.load()
-    except (OSError, Image.DecompressionBombWarning) as exc:
+    except (OSError, Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:
         raise ValueError("Không đọc được ảnh. Chọn ảnh JPG, PNG hoặc WebP rõ nét.") from exc
 
-    for angle in (0, 90, 180, 270):
+    for angle in rotations:
         oriented = image.rotate(angle, expand=True) if angle else image
-        # OCR the whole photo and the lower half where the three MRZ rows sit.
-        crops = [oriented, oriented.crop((0, oriented.height // 2, oriented.width, oriented.height))]
+        # In live mode the MRZ is expected along the lower edge of a horizontal card.
+        crops = (
+            [oriented.crop((0, oriented.height * 2 // 5, oriented.width, oriented.height))]
+            if fast
+            else [oriented, oriented.crop((0, oriented.height // 2, oriented.width, oriented.height))]
+        )
         for crop_index, crop in enumerate(crops):
             gray = ImageOps.autocontrast(ImageOps.grayscale(crop))
             if gray.width < 1400:
@@ -123,18 +132,21 @@ def _ocr(image_bytes: bytes) -> Iterator[str]:
                 gray = gray.resize((2600, int(gray.height * ratio)), Image.Resampling.LANCZOS)
             source = BytesIO()
             gray.save(source, format="PNG")
-            for psm in ((6,) if crop_index == 0 else (6, 11)):
+            modes = (6,) if fast or crop_index == 0 else (6, 11)
+            for psm in modes:
                 try:
                     result = subprocess.run(
                         [executable, "stdin", "stdout", "--psm", str(psm), "-c", "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<"],
                         input=source.getvalue(),
                         stdout=subprocess.PIPE,
                         stderr=subprocess.DEVNULL,
-                        timeout=10,
+                        timeout=5 if fast else 10,
                         check=False,
                     )
                 except subprocess.TimeoutExpired:
                     continue
+                except OSError as exc:
+                    raise RuntimeError("Không khởi chạy được Tesseract OCR trên Pi.") from exc
                 if result.returncode == 0:
                     yield result.stdout.decode("utf-8", errors="ignore")
 
@@ -150,8 +162,8 @@ def read_mrz_key(image_bytes: bytes) -> str:
     raise ValueError("Chưa đọc chắc được MRZ. Hãy chụp thẳng, đủ sáng và để rõ cả 2 dòng đầu của mã MRZ.")
 
 
-def read_mrz_key_from_camera() -> str:
-    """Chụp một ảnh từ webcam USB nối với Pi rồi nhận dạng MRZ."""
+def capture_camera_image() -> bytes:
+    """Chụp một khung hình tạm từ webcam USB nối với Pi."""
     executable = shutil.which("fswebcam")
     if not executable:
         raise RuntimeError("Pi chưa cài fswebcam. Chạy: sudo apt install fswebcam")
@@ -165,13 +177,13 @@ def read_mrz_key_from_camera() -> str:
                     executable,
                     "--device", device,
                     "--resolution", "1280x720",
-                    "--skip", "5",
+                    "--skip", "2",
                     "--no-banner",
                     str(image_path),
                 ],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                timeout=20,
+                timeout=8,
                 check=False,
             )
             if result.returncode != 0 or not image_path.is_file() or image_path.stat().st_size == 0:
@@ -181,5 +193,23 @@ def read_mrz_key_from_camera() -> str:
             image_bytes = image_path.read_bytes()
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError("Webcam Pi không phản hồi. Kiểm tra webcam có đang được ứng dụng khác sử dụng không.") from exc
+    except OSError as exc:
+        raise RuntimeError("Không khởi chạy được fswebcam trên Pi.") from exc
 
-    return read_mrz_key(image_bytes)
+    return image_bytes
+
+
+def read_mrz_key_live(image_bytes: bytes) -> str:
+    """Thử nhanh MRZ trên một khung hình webcam đang chạy."""
+    if not image_bytes:
+        raise ValueError("Chưa có ảnh webcam.")
+    for output in _ocr(image_bytes, rotations=(0,), fast=True):
+        key = _key_from_text(output)
+        if key:
+            return key
+    raise ValueError("MRZ chưa nhận diện được trong khung hình.")
+
+
+def read_mrz_key_from_camera() -> str:
+    """Chụp một ảnh từ webcam USB nối với Pi rồi nhận dạng MRZ."""
+    return read_mrz_key(capture_camera_image())
