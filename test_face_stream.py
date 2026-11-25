@@ -252,11 +252,12 @@ def run_camera():
     if HAS_PICAMERA2:
         try:
             picam2 = Picamera2()
-            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
+            # Dùng trực tiếp BGR888 chuẩn của OpenCV để màu sắc chuẩn xác nhất (không bị đảo kênh màu R/B)
+            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "BGR888"})
             picam2.configure(config)
             picam2.start()
             use_picam2 = True
-            print("[+] Đang dùng Picamera2 (phần cứng tăng tốc)")
+            print("[+] Đang dùng Picamera2 định dạng BGR888 (màu sắc tự nhiên)")
         except Exception as e:
             print(f"[-] Picamera2 không khả dụng ({e}), thử VideoCapture...")
 
@@ -272,8 +273,8 @@ def run_camera():
     while True:
         try:
             if use_picam2:
-                frame_rgb = picam2.capture_array()
-                frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                # capture_array() trả về mảng BGR nguyên bản từ camera
+                frame_bgr = picam2.capture_array()
             else:
                 ret, frame_bgr = cap.read()
                 if not ret:
