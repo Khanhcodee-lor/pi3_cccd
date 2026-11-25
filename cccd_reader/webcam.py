@@ -1,4 +1,4 @@
-"""Live USB webcam preview and automatic MRZ recognition."""
+"""Live Raspberry Pi camera preview and automatic MRZ recognition."""
 
 from __future__ import annotations
 
@@ -78,16 +78,42 @@ class WebcamManager:
             return self._frame, age
 
     def start(self, recognize_mrz: bool = True) -> tuple[bool, str]:
-        if not shutil.which("ffmpeg"):
-            return False, "Pi chưa cài ffmpeg. Chạy: sudo apt install ffmpeg"
         if recognize_mrz and not shutil.which("tesseract"):
             return False, "Pi chưa cài Tesseract OCR. Chạy: sudo apt install tesseract-ocr"
 
+        backend = self._camera_backend()
+        if backend not in {"picamera2", "v4l2"}:
+            return False, "CCCD_CAMERA_BACKEND chỉ nhận `picamera2` hoặc `v4l2`."
+
         device = os.environ.get("CCCD_CAMERA_DEVICE", "/dev/video0")
-        if not os.path.exists(device):
-            return False, f"Không tìm thấy webcam {device}. Kiểm tra dây USB hoặc đặt CCCD_CAMERA_DEVICE đúng thiết bị."
-        if not os.access(device, os.R_OK | os.W_OK):
-            return False, self._video_permission_message(device)
+        if backend == "picamera2":
+            python = self._picamera2_python()
+            if not python:
+                return False, "Không tìm thấy Python hệ thống của Raspberry Pi. Kiểm tra /usr/bin/python3."
+            try:
+                probe = subprocess.run(
+                    [python, "-c", "from picamera2 import Picamera2; from picamera2.encoders import JpegEncoder"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                return False, "Kiểm tra Picamera2 bị quá thời gian. Khởi động lại Raspberry Pi rồi thử lại."
+            except OSError as exc:
+                return False, f"Không chạy được Python hệ thống để mở Camera Pi: {exc}"
+            if probe.returncode:
+                return False, (
+                    "Pi chưa cài Picamera2 cho Python hệ thống. Chạy: "
+                    "sudo apt update && sudo apt install -y python3-picamera2"
+                )
+        else:
+            if not shutil.which("ffmpeg"):
+                return False, "Pi chưa cài ffmpeg. Chạy: sudo apt install ffmpeg"
+            if not os.path.exists(device):
+                return False, f"Không tìm thấy webcam {device}. Kiểm tra dây USB hoặc đặt CCCD_CAMERA_DEVICE đúng thiết bị."
+            if not os.access(device, os.R_OK | os.W_OK):
+                return False, self._video_permission_message(device)
 
         with self._condition:
             if self._state["status"] == "camera_scanning":
@@ -171,19 +197,42 @@ class WebcamManager:
     def _capture_loop(self, stop_event: threading.Event, recognize_mrz: bool) -> None:
         deadline = time.monotonic() + self.MAX_SESSION_SECONDS
         device = os.environ.get("CCCD_CAMERA_DEVICE", "/dev/video0")
+        backend = self._camera_backend()
         process: subprocess.Popen | None = None
         try:
-            executable = shutil.which("ffmpeg") or "ffmpeg"
-            profiles = (
-                (
-                    "MJPEG 1280x720",
-                    ["-input_format", "mjpeg", "-framerate", "30", "-video_size", "1280x720"],
-                    ["-c:v", "copy"],
-                ),
-                ("chế độ tự động", [], ["-vf", "fps=5", "-c:v", "mjpeg", "-q:v", "5"]),
-            )
+            if backend == "picamera2":
+                command = [
+                    self._picamera2_python(),
+                    os.path.join(os.path.dirname(__file__), "picamera2_stream.py"),
+                ]
+                profiles = (("Picamera2", command),)
+            else:
+                executable = shutil.which("ffmpeg") or "ffmpeg"
+                profiles = (
+                    (
+                        "MJPEG 1280x720",
+                        [
+                            executable,
+                            "-hide_banner", "-loglevel", "error", "-fflags", "+nobuffer",
+                            "-f", "v4l2", "-input_format", "mjpeg", "-framerate", "30",
+                            "-video_size", "1280x720", "-i", device,
+                            "-an", "-sn", "-dn", "-c:v", "copy",
+                            "-f", "image2pipe", "-flush_packets", "1", "pipe:1",
+                        ],
+                    ),
+                    (
+                        "chế độ tự động",
+                        [
+                            executable,
+                            "-hide_banner", "-loglevel", "error", "-fflags", "+nobuffer",
+                            "-f", "v4l2", "-i", device,
+                            "-an", "-sn", "-dn", "-vf", "fps=5", "-c:v", "mjpeg", "-q:v", "5",
+                            "-f", "image2pipe", "-flush_packets", "1", "pipe:1",
+                        ],
+                    ),
+                )
 
-            for attempt, (profile_name, input_options, output_options) in enumerate(profiles):
+            for attempt, (profile_name, command) in enumerate(profiles):
                 if stop_event.is_set():
                     return
                 frame_count = 0
@@ -191,20 +240,7 @@ class WebcamManager:
                 stream_timeout = ""
                 with tempfile.TemporaryFile() as error_log:
                     process = subprocess.Popen(
-                        [
-                            executable,
-                            "-hide_banner",
-                            "-loglevel", "error",
-                            "-fflags", "+nobuffer",
-                            "-f", "v4l2",
-                            *input_options,
-                            "-i", device,
-                            "-an", "-sn", "-dn",
-                            *output_options,
-                            "-f", "image2pipe",
-                            "-flush_packets", "1",
-                            "pipe:1",
-                        ],
+                        command,
                         stdout=subprocess.PIPE,
                         stderr=error_log,
                         bufsize=0,
@@ -269,17 +305,17 @@ class WebcamManager:
                 if frame_count:
                     self._set_camera_error(
                         stop_event,
-                        self._camera_failure_message(device, error_tail, profile_name),
+                        self._camera_failure_message(backend, device, error_tail, profile_name),
                     )
                     return
                 if attempt == len(profiles) - 1:
                     self._set_camera_error(
                         stop_event,
-                        self._camera_failure_message(device, error_tail, profile_name),
+                        self._camera_failure_message(backend, device, error_tail, profile_name),
                     )
                     return
         except OSError as exc:
-            self._set_camera_error(stop_event, f"Không mở được webcam {device}: {exc}")
+            self._set_camera_error(stop_event, self._camera_failure_message(backend, device, str(exc), "khởi động"))
         finally:
             with self._condition:
                 if self._process is process:
@@ -287,10 +323,22 @@ class WebcamManager:
             self._terminate(process)
 
     @staticmethod
-    def _camera_failure_message(device: str, detail: str, profile_name: str) -> str:
+    def _camera_failure_message(backend: str, device: str, detail: str, profile_name: str) -> str:
         normalized = detail.lower()
         if "permission denied" in normalized or "operation not permitted" in normalized:
+            if backend == "picamera2":
+                return WebcamManager._camera_permission_message()
             return WebcamManager._video_permission_message(device)
+        if backend == "picamera2":
+            if any(
+                phrase in normalized
+                for phrase in ("no cameras available", "no camera", "camera not found", "failed to acquire camera")
+            ):
+                return "Picamera2 không tìm thấy camera CSI. Kiểm tra cáp dẹt Camera v2 và bật giao diện camera trong Raspberry Pi OS."
+            if detail:
+                detail = " ".join(detail.split())
+                return f"Không mở được Camera Pi qua Picamera2: {detail}"
+            return "Picamera2 không nhận được hình từ Camera Pi. Kiểm tra cáp dẹt và thử khởi động lại Raspberry Pi."
         if detail:
             detail = " ".join(detail.split())
             return f"Không mở được webcam {device}: {detail}"
@@ -298,6 +346,17 @@ class WebcamManager:
             f"Webcam {device} không phát hình ở cấu hình {profile_name}. Kiểm tra webcam có đang được ứng dụng khác dùng "
             "không và đặt CCCD_CAMERA_DEVICE đúng thiết bị."
         )
+
+    @staticmethod
+    def _camera_backend() -> str:
+        return os.environ.get("CCCD_CAMERA_BACKEND", "picamera2").strip().lower()
+
+    @staticmethod
+    def _picamera2_python() -> str | None:
+        configured = os.environ.get("CCCD_PICAMERA2_PYTHON", "/usr/bin/python3")
+        if os.path.sep in configured:
+            return configured if os.path.isfile(configured) and os.access(configured, os.X_OK) else None
+        return shutil.which(configured)
 
     @staticmethod
     def _video_permission_message(device: str) -> str:
@@ -308,6 +367,17 @@ class WebcamManager:
         return (
             f"Pi không có quyền truy cập webcam {device}. Chạy `sudo usermod -aG video {username}`, "
             "rồi khởi động lại Pi để web server nhận quyền mới."
+        )
+
+    @staticmethod
+    def _camera_permission_message() -> str:
+        try:
+            username = pwd.getpwuid(os.geteuid()).pw_name
+        except KeyError:
+            username = "<tên-user>"
+        return (
+            f"User chạy web server ({username}) chưa có quyền mở camera CSI. "
+            f"Chạy `sudo usermod -aG video {username}` rồi khởi động lại Pi."
         )
 
     def _recognize_loop(self, stop_event: threading.Event) -> None:
