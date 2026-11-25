@@ -75,6 +75,12 @@
     .result-head h2 { margin: 0; font-size: 1rem; }
     .clear { padding: 8px 11px; background: #f0f5f3; color: var(--green-dark); font-size: .78rem; }
     .result-content { display: grid; grid-template-columns: 170px 1fr; gap: 22px; padding: 22px; }
+    .verification { margin: 0 22px 22px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #f7fbf9; }
+    .verification p { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.55; }
+    .verification-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .verification-actions button { min-height: 44px; padding: 10px 12px; background: #e8f2ef; color: var(--green-dark); }
+    .verification-actions .verify { background: var(--green); color: white; }
+    .verification-actions .verify:hover:not(:disabled) { background: var(--green-dark); }
     .photo-wrap { width: 100%; aspect-ratio: 3 / 4; overflow: hidden; display: grid; place-items: center; border-radius: 12px; background: #edf3f1; color: var(--muted); text-align: center; font-size: .78rem; }
     .photo-wrap img { width: 100%; height: 100%; object-fit: cover; }
     .photo-fallback { padding: 12px; }
@@ -105,7 +111,7 @@
   <main>
     <div class="eyebrow">Raspberry Pi · NFC</div>
     <h1>Đọc thông tin CCCD</h1>
-    <p class="intro">Đọc mã MRZ bằng camera hoặc nhập tay, sau đó đặt thẻ lên đầu đọc NFC đang nối với Pi.</p>
+    <p class="intro">Đọc CCCD bằng NFC, lưu thông tin lên Firebase, rồi xác thực khuôn mặt trước khi kích relay mở cửa.</p>
 
     <div class="layout">
       <section class="panel scan-panel" aria-labelledby="scan-title">
@@ -121,14 +127,14 @@
           <label class="visually-hidden" for="mrzPhoto">Chọn ảnh mặt sau CCCD</label>
           <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
           <button class="photo-button" id="photoButton" type="button">Hoặc chọn ảnh từ điện thoại / máy tính</button>
-          <p class="hint">Ảnh chỉ được giữ tạm trong lúc xử lý trên Pi rồi xóa; kiểm tra mã nhận dạng trước khi quét NFC.</p>
+          <p class="hint">Ảnh bạn chọn chỉ giữ tạm để đọc MRZ. Sau khi quét NFC, ảnh chân dung DG2 được lưu trong <code>output/</code> để hiển thị và đối chiếu trên Pi.</p>
           <button class="primary" id="startButton" type="submit">Quét thẻ</button>
         </form>
         <div class="status" id="status" role="status" aria-live="polite">
           <span class="dot"></span>
           <div><span id="statusText">Nhập MRZ key info rồi bắt đầu quét.</span><div class="progress" id="progress" hidden><span id="progressBar"></span></div></div>
         </div>
-        <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Thông tin thẻ nằm trong bộ nhớ khi server chạy; ảnh trích xuất được lưu trong thư mục <code>output/</code>.</p>
+        <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Firestore chỉ nhận các trường văn bản; ảnh chân dung CCCD và webcam được xử lý trên Pi. Cần camera và relay GPIO đã cấu hình.</p>
       </section>
 
       <section class="panel result-panel" aria-live="polite">
@@ -140,6 +146,13 @@
           <div class="result-content">
             <div class="photo-wrap" id="photoWrap"><span class="photo-fallback">Không có ảnh chân dung</span></div>
             <div class="fields" id="fields"></div>
+          </div>
+          <div class="verification" id="verification" hidden>
+            <p id="verificationHint">Dữ liệu CCCD đã được lưu. Bật camera, đặt khuôn mặt vào khung hình rồi xác thực.</p>
+            <div class="verification-actions">
+              <button type="button" id="faceCameraButton">Bật camera xác thực</button>
+              <button type="button" class="verify" id="verifyButton" disabled>Xác thực và mở cửa</button>
+            </div>
           </div>
           <details><summary>Xem MRZ gốc</summary><pre id="rawMrz"></pre></details>
         </div>
@@ -161,8 +174,16 @@
     const progressBar = document.getElementById('progressBar');
     const emptyState = document.getElementById('emptyState');
     const result = document.getElementById('result');
+    const verification = document.getElementById('verification');
+    const verificationHint = document.getElementById('verificationHint');
+    const faceCameraButton = document.getElementById('faceCameraButton');
+    const verifyButton = document.getElementById('verifyButton');
     let polling = false;
     let cameraActive = false;
+    let faceCameraActive = false;
+    let faceCameraReady = false;
+    let canVerifyFace = false;
+    let currentStatus = 'idle';
     let cameraFrameBusy = false;
     let cameraFrameUrl = null;
 
@@ -173,13 +194,24 @@
       cameraFrameUrl = null;
     }
 
+    function updateFaceControls() {
+      const visible = result.style.display === 'block';
+      verification.hidden = !visible;
+      faceCameraButton.hidden = !canVerifyFace;
+      verifyButton.hidden = !canVerifyFace;
+      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera xác thực';
+      faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'door_opened'].includes(currentStatus);
+      verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'door_opened'].includes(currentStatus);
+    }
+
     function setStatus(state) {
+      currentStatus = state.status;
       statusBox.className = 'status';
-      const scanBusy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status);
+      const scanBusy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(state.status);
       const busy = scanBusy || state.status === 'camera_scanning';
       if (busy) statusBox.classList.add('busy');
-      if (state.status === 'done' || state.status === 'camera_done') statusBox.classList.add('success');
-      if (state.status === 'error' || state.status === 'camera_error') statusBox.classList.add('error');
+      if (state.status === 'done' || state.status === 'camera_done' || state.status === 'door_opened') statusBox.classList.add('success');
+      if (['error', 'camera_error', 'face_error', 'face_mismatch'].includes(state.status)) statusBox.classList.add('error');
       statusText.textContent = state.message || '';
       startButton.disabled = scanBusy || state.status === 'camera_scanning';
       photoButton.disabled = scanBusy || state.status === 'camera_scanning';
@@ -192,11 +224,12 @@
         progress.hidden = true;
         progressBar.style.width = '25%';
       }
-      if (state.status === 'done' && state.data) showResult(state);
+      if (state.data && ['done', 'verifying_face', 'face_error', 'face_mismatch', 'door_opened'].includes(state.status)) showResult(state);
       if (state.status === 'idle') {
         result.style.display = 'none';
         emptyState.style.display = 'grid';
       }
+      updateFaceControls();
     }
 
     function addField(label, value, wide = false, name = false) {
@@ -214,6 +247,7 @@
 
     function showResult(state) {
       const data = state.data;
+      canVerifyFace = state.can_verify_face !== false;
       document.getElementById('fields').replaceChildren();
       addField('Họ và tên', data.full_name, true, true);
       addField('Số giấy tờ', data.document_number);
@@ -224,6 +258,9 @@
       addField('Loại giấy tờ', data.document_type);
       addField('Nơi cấp', data.issuing_country);
       document.getElementById('rawMrz').textContent = data.mrz || (state.mrz_lines || []).join('\n');
+      verificationHint.textContent = canVerifyFace
+        ? `Đã lưu dữ liệu CCCD lên Firebase${state.record_id ? ` (mã ${state.record_id.slice(0, 12)})` : ''}. Bật camera, nhìn thẳng vào camera rồi xác thực.`
+        : 'Đã lưu dữ liệu CCCD lên Firebase nhưng không đọc được ảnh chân dung DG2 nên chưa thể xác thực khuôn mặt.';
 
       const photoWrap = document.getElementById('photoWrap');
       photoWrap.replaceChildren();
@@ -240,6 +277,7 @@
       photoWrap.append(image);
       emptyState.style.display = 'none';
       result.style.display = 'block';
+      updateFaceControls();
     }
 
     async function pollStatus() {
@@ -249,7 +287,7 @@
         const response = await fetch('/api/status', { cache: 'no-store' });
         const state = await response.json();
         setStatus(state);
-        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status)) {
+        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(state.status)) {
           setTimeout(() => { polling = false; pollStatus(); }, 700);
           return;
         }
@@ -261,6 +299,12 @@
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (faceCameraActive) await stopFaceCamera();
+      if (cameraActive) {
+        cameraActive = false;
+        clearCameraPreview();
+        await fetch('/api/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
+      }
       const mrzKey = keyInput.value.replace(/\s/g, '').toUpperCase();
       if (!/^[0-9A-Z<]{24}$/.test(mrzKey)) {
         setStatus({ status: 'error', message: 'MRZ key info cần đúng 24 ký tự.' });
@@ -336,7 +380,7 @@
     });
 
     async function refreshCameraFrame() {
-      if (!cameraActive || cameraFrameBusy) return;
+      if ((!cameraActive && !faceCameraActive) || cameraFrameBusy) return;
       cameraFrameBusy = true;
       try {
         const response = await fetch(`/api/camera/frame?v=${Date.now()}`, { cache: 'no-store' });
@@ -351,7 +395,7 @@
         // The camera may need a moment to produce its first frame.
       } finally {
         cameraFrameBusy = false;
-        if (cameraActive) setTimeout(refreshCameraFrame, 200);
+        if (cameraActive || faceCameraActive) setTimeout(refreshCameraFrame, 200);
       }
     }
 
@@ -385,13 +429,93 @@
       if (cameraActive) setTimeout(pollCameraRecognition, 650);
     }
 
+    async function stopFaceCamera() {
+      faceCameraActive = false;
+      faceCameraReady = false;
+      clearCameraPreview();
+      await fetch('/api/face/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
+      updateFaceControls();
+    }
+
+    faceCameraButton.addEventListener('click', async () => {
+      if (faceCameraActive) {
+        await stopFaceCamera();
+        setStatus({ status: currentStatus === 'door_opened' ? 'door_opened' : 'done', message: 'Đã tắt camera xác thực.' });
+        return;
+      }
+      faceCameraButton.disabled = true;
+      try {
+        const response = await fetch('/api/face/camera/start', { method: 'POST', cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không bật được camera xác thực.');
+        faceCameraActive = true;
+        faceCameraReady = false;
+        cameraPreview.hidden = false;
+        setStatus({ status: 'camera_scanning', message: payload.message });
+        refreshCameraFrame();
+        pollFaceCameraReady();
+      } catch (error) {
+        setStatus({ status: 'face_error', message: error.message });
+      }
+    });
+
+    async function pollFaceCameraReady() {
+      if (!faceCameraActive) return;
+      try {
+        const response = await fetch('/api/camera/status', { cache: 'no-store' });
+        const state = await response.json();
+        if (state.status === 'camera_error' || state.status === 'camera_stopped') {
+          faceCameraActive = false;
+          faceCameraReady = false;
+          clearCameraPreview();
+          setStatus({ status: state.status === 'camera_error' ? 'face_error' : 'done', message: state.message });
+          return;
+        }
+        faceCameraReady = Boolean(state.frame_ready);
+        if (faceCameraReady) {
+          statusText.textContent = 'Camera đã sẵn sàng. Nhìn thẳng vào camera rồi bấm “Xác thực và mở cửa”.';
+          updateFaceControls();
+        }
+      } catch (_) {
+        faceCameraActive = false;
+        faceCameraReady = false;
+        clearCameraPreview();
+        setStatus({ status: 'face_error', message: 'Mất kết nối tới webcam Pi.' });
+        return;
+      }
+      if (faceCameraActive && !faceCameraReady) setTimeout(pollFaceCameraReady, 250);
+    }
+
+    verifyButton.addEventListener('click', async () => {
+      verifyButton.disabled = true;
+      setStatus({ status: 'verifying_face', message: 'Đang so khớp khuôn mặt với ảnh trên CCCD…' });
+      try {
+        const response = await fetch('/api/face/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: '{}'
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không xác thực được khuôn mặt.');
+        setStatus({ status: payload.unlocked ? 'door_opened' : 'face_mismatch', message: payload.message });
+        if (payload.unlocked) await stopFaceCamera();
+      } catch (error) {
+        setStatus({ status: 'face_error', message: error.message });
+      }
+    });
+
     window.addEventListener('pagehide', () => {
       if (cameraActive) {
         fetch('/api/camera/stop', { method: 'POST', keepalive: true, cache: 'no-store' }).catch(() => {});
       }
+      if (faceCameraActive) {
+        fetch('/api/face/camera/stop', { method: 'POST', keepalive: true, cache: 'no-store' }).catch(() => {});
+      }
     });
 
     document.getElementById('clearButton').addEventListener('click', async () => {
+      if (faceCameraActive) await stopFaceCamera();
       await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       setStatus({ status: 'idle', message: 'Đã xóa thông tin khỏi trang.' });
     });

@@ -10,6 +10,7 @@ import json
 import mimetypes
 import os
 import threading
+import time
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,13 +21,23 @@ from .webcam import WebcamManager
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_ROOT = PROJECT_ROOT / "web"
-RUNNING_STATES = {"waiting_for_card", "authenticating", "reading_dg1", "reading_dg2"}
+RUNNING_STATES = {
+    "waiting_for_card",
+    "authenticating",
+    "reading_dg1",
+    "reading_dg2",
+    "saving_firebase",
+    "verifying_face",
+}
 
 
 class ScanManager:
     def __init__(self):
         self._lock = threading.Lock()
         self._photo_path: Path | None = None
+        self._record_id: str | None = None
+        self._scan_finished_at: float | None = None
+        self._face_verifying = False
         self._state = {
             "status": "idle",
             "message": "Nhập MRZ key info rồi bắt đầu quét.",
@@ -45,8 +56,11 @@ class ScanManager:
 
         with self._lock:
             if self._state["status"] in RUNNING_STATES:
-                return False, "Đang có một lượt quét chạy. Hãy đợi lượt đó kết thúc."
+                return False, "Đang xử lý một lượt. Hãy đợi lượt đó kết thúc."
             self._photo_path = None
+            self._record_id = None
+            self._scan_finished_at = None
+            self._face_verifying = False
             self._state = {
                 "status": "waiting_for_card",
                 "message": "Đang chờ CCCD trên đầu đọc…",
@@ -63,6 +77,9 @@ class ScanManager:
             if self._state["status"] in RUNNING_STATES:
                 return
             self._photo_path = None
+            self._record_id = None
+            self._scan_finished_at = None
+            self._face_verifying = False
             self._state = {
                 "status": "idle",
                 "message": "Nhập MRZ key info rồi bắt đầu quét.",
@@ -79,6 +96,9 @@ class ScanManager:
         return path.read_bytes(), content_type
 
     def _update(self, stage: str, message: str, done: int | None, total: int | None) -> None:
+        if stage == "done":
+            stage = "saving_firebase"
+            message = "Đã đọc CCCD. Đang lưu thông tin lên Firebase…"
         progress = None
         if done is not None and total is not None:
             progress = {"done": done, "total": total, "percent": int(done * 100 / total) if total else 100}
@@ -88,14 +108,21 @@ class ScanManager:
     def _scan(self, key: str) -> None:
         try:
             result: ScanResult = scan_card(key, progress=self._update)
+            from .firebase_store import save_cccd
+
+            record_id = save_cccd(result.fields)
             with self._lock:
                 self._photo_path = result.photo_path
+                self._record_id = record_id
+                self._scan_finished_at = time.monotonic()
                 self._state = {
                     "status": "done",
-                    "message": "Đọc CCCD thành công.",
+                    "message": "Đọc CCCD thành công và đã lưu dữ liệu lên Firebase.",
                     "progress": None,
                     "data": result.fields,
                     "mrz_lines": result.mrz_lines,
+                    "record_id": record_id,
+                    "can_verify_face": result.photo_path is not None,
                 }
         except Exception as exc:
             with self._lock:
@@ -106,6 +133,46 @@ class ScanManager:
                     "progress": None,
                     "data": None,
                 }
+
+    def begin_face_verification(self) -> Path:
+        with self._lock:
+            if self._state["status"] == "door_opened":
+                raise RuntimeError("Cửa đã mở cho CCCD này. Quét thẻ mới để bắt đầu lượt khác.")
+            if self._face_verifying:
+                raise RuntimeError("Đang xác thực khuôn mặt. Hãy đợi lượt đó kết thúc.")
+            if self._state["status"] not in {"done", "face_mismatch", "face_error"}:
+                raise RuntimeError("Hãy đọc và lưu CCCD lên Firebase trước khi xác thực khuôn mặt.")
+            if not self._record_id:
+                raise RuntimeError("Chưa có bản ghi CCCD đã lưu trên Firebase.")
+            if self._photo_path is None:
+                raise RuntimeError("Không có ảnh chân dung từ DG2 trên CCCD để đối chiếu.")
+            if self._scan_finished_at is None or time.monotonic() - self._scan_finished_at > 300:
+                raise RuntimeError("Lượt quét CCCD đã hết hạn. Hãy quét lại thẻ.")
+            self._face_verifying = True
+            self._state = {
+                **self._state,
+                "status": "verifying_face",
+                "message": "Đang so khớp khuôn mặt với ảnh trên CCCD…",
+                "progress": None,
+            }
+            return self._photo_path
+
+    def finish_face_verification(
+        self,
+        *,
+        status: str,
+        message: str,
+        score: float | None = None,
+    ) -> None:
+        with self._lock:
+            self._face_verifying = False
+            self._state = {
+                **self._state,
+                "status": status,
+                "message": message,
+                "progress": None,
+                "face_score": score,
+            }
 
 
 class WebHandler(BaseHTTPRequestHandler):
@@ -201,11 +268,26 @@ class WebHandler(BaseHTTPRequestHandler):
                 return
             self._send_json(202, {"message": message})
             return
+        if path == "/api/face/camera/start":
+            if length:
+                self.rfile.read(length)
+            started, message = self.server.webcam_manager.start(recognize_mrz=False)
+            if not started:
+                self._send_json(409 if message.startswith("Camera Pi đang chạy") else 503, {"error": message})
+                return
+            self._send_json(202, {"message": message})
+            return
         if path == "/api/camera/stop":
             if length:
                 self.rfile.read(length)
             self.server.webcam_manager.stop()
             self._send_json(200, {"message": "Camera Pi đã tắt."})
+            return
+        if path == "/api/face/camera/stop":
+            if length:
+                self.rfile.read(length)
+            self.server.webcam_manager.stop()
+            self._send_json(200, {"message": "Camera xác thực đã tắt."})
             return
         if path == "/api/mrz-ocr":
             if length == 0:
@@ -255,11 +337,67 @@ class WebHandler(BaseHTTPRequestHandler):
             if not isinstance(value, str):
                 self._send_json(400, {"error": "MRZ key info không hợp lệ."})
                 return
+            try:
+                from .firebase_store import ensure_firebase_ready
+
+                ensure_firebase_ready()
+            except RuntimeError as exc:
+                self._send_json(503, {"error": str(exc)})
+                return
             started, message = self.server.scan_manager.start(value)
             if not started:
-                self._send_json(409 if message.startswith("Đang có") else 400, {"error": message})
+                self._send_json(409 if message.startswith("Đang xử lý") else 400, {"error": message})
                 return
             self._send_json(202, {"message": message})
+        elif path == "/api/face/verify":
+            photo_path = None
+            score = None
+            try:
+                photo_path = self.server.scan_manager.begin_face_verification()
+                frame, age = self.server.webcam_manager.frame_snapshot()
+                if frame is None or age is None or age > 2.0:
+                    raise RuntimeError("Chưa có khung hình webcam mới. Bật camera xác thực và thử lại.")
+
+                from .face_verification import compare_faces
+
+                try:
+                    threshold = float(os.environ.get("CCCD_FACE_THRESHOLD", "0.363"))
+                except ValueError as exc:
+                    raise RuntimeError("CCCD_FACE_THRESHOLD cần là số từ 0 đến 1.") from exc
+                if not 0 < threshold <= 1:
+                    raise RuntimeError("CCCD_FACE_THRESHOLD cần nằm trong khoảng lớn hơn 0 đến 1.")
+
+                score, matched = compare_faces(photo_path, frame, threshold)
+                if not matched:
+                    message = f"Khuôn mặt chưa khớp với ảnh CCCD (điểm {score:.3f}). Hãy thử lại."
+                    self.server.scan_manager.finish_face_verification(
+                        status="face_mismatch", message=message, score=score
+                    )
+                    self._send_json(200, {"matched": False, "unlocked": False, "score": score, "message": message})
+                    return
+
+                from .door import unlock_door
+
+                unlock_door()
+                message = f"Khuôn mặt khớp (điểm {score:.3f}). Đã kích relay mở cửa."
+                self.server.scan_manager.finish_face_verification(
+                    status="door_opened", message=message, score=score
+                )
+                self._send_json(200, {"matched": True, "unlocked": True, "score": score, "message": message})
+            except RuntimeError as exc:
+                message = str(exc) or "Không xác thực được khuôn mặt."
+                if photo_path is not None:
+                    self.server.scan_manager.finish_face_verification(
+                        status="face_error", message=message, score=score
+                    )
+                self._send_json(503, {"matched": False, "unlocked": False, "score": score, "error": message})
+            except Exception as exc:
+                message = f"Lỗi xác thực/mở cửa: {exc}"
+                if photo_path is not None:
+                    self.server.scan_manager.finish_face_verification(
+                        status="face_error", message=message, score=score
+                    )
+                self._send_json(503, {"matched": score is not None, "unlocked": False, "score": score, "error": message})
         elif path == "/api/clear":
             self.server.scan_manager.clear()
             self._send_json(200, {"message": "Đã xóa thông tin khỏi trang."})

@@ -45,6 +45,52 @@ Mở `http://192.168.1.116:8000` trên thiết bị cùng mạng với Pi; đăn
 
 Sau khi service được cài, workflow triển khai sẽ tự khởi động lại web server mỗi lần đồng bộ code lên Pi.
 
+## Lưu CCCD lên Firebase và xác thực để mở cửa
+
+Sau khi quét NFC thành công, server lưu các trường họ tên, số giấy tờ, giới tính, ngày sinh, quốc tịch, ngày hết hạn và loại giấy tờ vào **Cloud Firestore**. MRZ thô và ảnh chân dung không được tải lên Firebase. Ảnh DG2 được giữ cục bộ trong `output/` để hiển thị và đối chiếu khuôn mặt.
+
+### Cấu hình Firebase
+
+1. Tạo project Firebase và bật Cloud Firestore.
+2. Tạo service account cho Firebase Admin SDK, tải JSON key về Pi và giữ file này ngoài Git.
+3. Cài thư viện trong virtualenv và tải hai model OpenCV Zoo (khoảng 37 MB):
+
+```bash
+cd ~/p3_cccd
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m cccd_reader.download_face_models
+```
+
+4. Thêm cấu hình vào `~/.config/p3_cccd/web.env`, đặt quyền file chỉ cho user Pi đọc:
+
+```text
+FIREBASE_SERVICE_ACCOUNT=/home/khanh/.config/p3_cccd/firebase-service-account.json
+FIREBASE_PROJECT_ID=ten-project-firebase
+FIRESTORE_COLLECTION=cccd_cards
+CCCD_FACE_THRESHOLD=0.363
+CCCD_DOOR_GPIO_PIN=17
+CCCD_DOOR_RELAY_ACTIVE_HIGH=false
+CCCD_DOOR_UNLOCK_SECONDS=3
+```
+
+`FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Chân relay dùng số BCM; ví dụ `17` là GPIO17. Giá trị mặc định `ACTIVE_HIGH=false` dành cho relay kích mức thấp. Đấu khóa qua module relay phù hợp, không nối tải khóa trực tiếp vào GPIO. Nếu relay của bạn kích mức cao, đổi thành `true`.
+
+Ngưỡng `0.363` là điểm bắt đầu theo demo SFace của OpenCV Zoo; cần hiệu chỉnh bằng camera thực tế và dữ liệu có sự đồng ý trước khi dùng. Ngưỡng cao hơn chặt hơn nhưng có thể từ chối đúng người. Sau khi cấu hình, khởi động lại service:
+
+```bash
+chmod 600 ~/.config/p3_cccd/web.env
+chmod 600 ~/.config/p3_cccd/firebase-service-account.json
+systemctl --user restart cccd-web.service
+```
+
+### Luồng hoạt động
+
+1. Đọc CCCD qua NFC và ghi dữ liệu vào Firestore. Nếu Firebase ghi lỗi, lượt quét báo lỗi và không thể xác thực/mở cửa.
+2. Bật camera xác thực, nhìn thẳng vào camera rồi chọn **Xác thực và mở cửa**.
+3. Server so ảnh khuôn mặt webcam với ảnh DG2 của thẻ vừa quét. Chỉ khi điểm vượt ngưỡng mới phát xung relay; mỗi lượt quét chỉ mở cửa một lần và hết hạn sau 5 phút.
+
+Đây là bản đối chiếu khuôn mặt 1:1, chưa có kiểm tra người thật/chống giả mạo; ảnh hoặc video phát lại có thể đánh lừa hệ thống. Không dùng nó làm lớp bảo vệ duy nhất cho khu vực cần an ninh cao. Web server hiện dùng HTTP và Basic Auth, vì vậy chỉ truy cập qua mạng tin cậy, không mở trực tiếp ra Internet.
+
 ## Đọc thẻ bằng dòng lệnh
 
 ```bash
