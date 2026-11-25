@@ -51,16 +51,19 @@ def get_cascade_path():
         print(f"[-] Không tải được mô hình: {exc}")
         return None
 
-cascade_file = get_cascade_path()
-if not cascade_file:
-    print("[-] LỖI: Không tìm thấy file haarcascade_frontalface_default.xml")
-    sys.exit(1)
-
-print(f"[+] Sử dụng mô hình: {cascade_file}")
-face_cascade = cv2.CascadeClassifier(cascade_file)
-if face_cascade.empty():
-    print("[-] LỖI: Không thể tải mô hình Haar Cascade vào OpenCV.")
-    sys.exit(1)
+face_cascade = None
+if hasattr(cv2, 'CascadeClassifier'):
+    cascade_file = get_cascade_path()
+    if cascade_file:
+        print(f"[+] Sử dụng mô hình: {cascade_file}")
+        face_cascade = cv2.CascadeClassifier(cascade_file)
+        if face_cascade.empty():
+            print("[-] CẢNH BÁO: Không thể nạp mô hình Haar Cascade vào OpenCV.")
+            face_cascade = None
+    else:
+        print("[-] CẢNH BÁO: Không tìm thấy file haarcascade_frontalface_default.xml")
+else:
+    print("[!] Phiên bản OpenCV hiện tại (v5.x) không hỗ trợ CascadeClassifier, sẽ stream camera thuần.")
 
 # Buffer lưu trữ khung hình mới nhất
 class StreamBuffer:
@@ -187,7 +190,6 @@ HTML_PAGE = """<!DOCTYPE html>
 
 class WebStreamHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Giảm bớt log terminal để không bị tràn màn hình
         pass
 
     def do_GET(self):
@@ -278,27 +280,28 @@ def run_camera():
                     time.sleep(0.05)
                     continue
 
-            # Nhận diện khuôn mặt trên ảnh xám
-            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.15,
-                minNeighbors=4,
-                minSize=(40, 40)
-            )
-
-            # Vẽ khung xanh quanh mặt
-            for (x, y, w, h) in faces:
-                cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                cv2.putText(
-                    frame_bgr,
-                    "Face",
-                    (x, y - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2
+            # Nhận diện khuôn mặt nếu có mô hình
+            face_count = 0
+            if face_cascade is not None:
+                gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+                faces = face_cascade.detectMultiScale(
+                    gray,
+                    scaleFactor=1.15,
+                    minNeighbors=4,
+                    minSize=(40, 40)
                 )
+                face_count = len(faces)
+                for (x, y, w, h) in faces:
+                    cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                    cv2.putText(
+                        frame_bgr,
+                        "Face",
+                        (x, y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (0, 255, 0),
+                        2
+                    )
 
             # Tính FPS
             curr_time = time.time()
@@ -310,7 +313,7 @@ def run_camera():
 
             cv2.putText(
                 frame_bgr,
-                f"FPS: {fps_smooth:.1f} | Faces: {len(faces)}",
+                f"FPS: {fps_smooth:.1f} | Faces: {face_count}",
                 (15, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
@@ -318,7 +321,7 @@ def run_camera():
                 2
             )
 
-            # Nén ảnh JPEG (chất lượng 75 để truyền nhanh qua Wi-Fi)
+            # Nén ảnh JPEG
             ret, jpeg = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
             if ret:
                 buffer.set_frame(jpeg.tobytes())
@@ -336,14 +339,14 @@ def main():
     print("=" * 60)
     print(f"[>] Mở trình duyệt trên máy tính/điện thoại và truy cập:")
     print(f"    👉 http://{ip}:{port}")
-    print(f"    (Hoặc: http://localhost:{port} nếu mở ngay trên Pi)")
+    print(f"    (Hoặc: http://localhost:{port} nếu mở ngay trên máy này)")
     print("=" * 60)
 
     # Chạy luồng đọc camera
     cam_thread = Thread(target=run_camera, daemon=True)
     cam_thread.start()
 
-    # Chạy ThreadingHTTPServer (đa luồng, không bị treo trình duyệt)
+    # Chạy ThreadingHTTPServer (đa luồng)
     server = ThreadingHTTPServer(('0.0.0.0', port), WebStreamHandler)
     print(f"[*] Server đang lắng nghe tại port {port}...")
     try:
