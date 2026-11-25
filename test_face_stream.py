@@ -5,8 +5,12 @@ Xem trực tiếp qua trình duyệt web tại http://<IP_CỦA_PI>:8080
 """
 
 import io
+import os
+import sys
 import time
 import socket
+import urllib.request
+from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread, Lock
 import cv2
@@ -17,8 +21,47 @@ try:
 except ImportError:
     HAS_PICAMERA2 = False
 
-# Khởi tạo mô hình nhận diện khuôn mặt của OpenCV (Haar Cascade nhẹ, phù hợp Pi 3)
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+# Tìm file haarcascade_frontalface_default.xml
+def get_cascade_path():
+    script_dir = Path(__file__).resolve().parent
+    local_file = script_dir / "haarcascade_frontalface_default.xml"
+    if local_file.is_file():
+        return str(local_file)
+
+    system_paths = [
+        "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+        "/usr/share/opencv/haarcascades/haarcascade_frontalface_default.xml",
+        "/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
+    ]
+    for p in system_paths:
+        if os.path.isfile(p):
+            return p
+
+    if hasattr(cv2, 'data') and hasattr(cv2.data, 'haarcascades'):
+        cv_data_path = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
+        if os.path.isfile(cv_data_path):
+            return cv_data_path
+
+    # Tự động tải nếu chưa có
+    url = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
+    print(f"[*] Đang tải mô hình nhận diện khuôn mặt về {local_file}...")
+    try:
+        urllib.request.urlretrieve(url, str(local_file))
+        return str(local_file)
+    except Exception as exc:
+        print(f"[-] Không tải được mô hình: {exc}")
+        return None
+
+cascade_file = get_cascade_path()
+if not cascade_file:
+    print("[-] LỖI: Không tìm thấy file haarcascade_frontalface_default.xml")
+    sys.exit(1)
+
+print(f"[+] Sử dụng mô hình: {cascade_file}")
+face_cascade = cv2.CascadeClassifier(cascade_file)
+if face_cascade.empty():
+    print("[-] LỖI: Không thể tải mô hình Haar Cascade vào OpenCV.")
+    sys.exit(1)
 
 # Biến lưu trữ khung hình mới nhất để stream web
 class StreamBuffer:
@@ -51,17 +94,17 @@ class WebStreamHandler(BaseHTTPRequestHandler):
                 <style>
                     body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #fff; margin: 0; padding: 20px; }
                     h2 { margin-bottom: 10px; color: #4CAF50; }
-                    .stream-box { display: inline-block; border: 3px solid #333; border-radius: 8px; overflow: hidden; max-width: 95vw; }
+                    .stream-box { display: inline-block; border: 3px solid #333; border-radius: 8px; overflow: hidden; max-width: 95vw; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
                     img { width: 100%; max-width: 640px; height: auto; display: block; }
-                    p { color: #aaa; font-size: 14px; }
+                    p { color: #aaa; font-size: 14px; margin-top: 15px; }
                 </style>
             </head>
             <body>
-                <h2>Raspberry Pi Camera v2 - Face Detection</h2>
+                <h2>Raspberry Pi Camera v2 - Live Face Detection</h2>
                 <div class="stream-box">
                     <img src="/stream.mjpg" />
                 </div>
-                <p>Khung xanh: Khuôn mặt phát hiện được | FPS hiển thị góc trên</p>
+                <p>Khung xanh: Khuôn mặt phát hiện | FPS & Số mặt hiển thị góc trái trên</p>
             </body>
             </html>
             """
@@ -189,7 +232,7 @@ def main():
     print(f"    👉 http://{ip}:{port}")
     print(f"    (Hoặc: http://localhost:{port} nếu mở ngay trên Pi)")
     print("=" * 60)
-    print("[*] Nhấn Ctrl + C để dừng.")
+    print("[*] Đang khởi chạy web server...")
 
     # Chạy luồng đọc camera và xử lý AI
     cam_thread = Thread(target=run_camera, daemon=True)
