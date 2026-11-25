@@ -70,12 +70,17 @@ FIREBASE_PROJECT_ID=ten-project-firebase
 FIREBASE_STORAGE_BUCKET=ten-project-firebase.firebasestorage.app
 FIRESTORE_COLLECTION=cccd_cards
 CCCD_FACE_THRESHOLD=0.363
-CCCD_DOOR_GPIO_PIN=17
-CCCD_DOOR_RELAY_ACTIVE_HIGH=false
+CCCD_DOOR_ACTUATOR=servo
+CCCD_DOOR_GPIO_PIN=18
+CCCD_DOOR_SERVO_CLOSED_ANGLE=0
+CCCD_DOOR_SERVO_OPEN_ANGLE=90
 CCCD_DOOR_UNLOCK_SECONDS=3
+# Dùng biến này nếu điều khiển relay thay vì servo:
+# CCCD_DOOR_ACTUATOR=relay
+# CCCD_DOOR_RELAY_ACTIVE_HIGH=false
 ```
 
-`FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Điền đúng tên bucket đang hiện trong Firebase Console, không ghi tiền tố `gs://`; bucket cũ có thể kết thúc bằng `.appspot.com`. Giữ bucket ở chế độ riêng tư; web Pi tải ảnh qua API dùng cùng cơ chế đăng nhập của trang. Nếu chưa đặt bucket, dữ liệu chữ vẫn lưu được và ảnh vẫn dùng được trên Pi để xác thực, nhưng ảnh sẽ chưa xuất hiện trong lịch sử Firebase. Chân relay dùng số BCM; ví dụ `17` là GPIO17. Giá trị mặc định `ACTIVE_HIGH=false` dành cho relay kích mức thấp. Đấu khóa qua module relay phù hợp, không nối tải khóa trực tiếp vào GPIO. Nếu relay của bạn kích mức cao, đổi thành `true`.
+`FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Điền đúng tên bucket đang hiện trong Firebase Console, không ghi tiền tố `gs://`; bucket cũ có thể kết thúc bằng `.appspot.com`. Giữ bucket ở chế độ riêng tư; web Pi tải ảnh qua API dùng cùng cơ chế đăng nhập của trang. Nếu chưa đặt bucket, dữ liệu chữ vẫn lưu được và ảnh vẫn dùng được trên Pi để xác thực, nhưng ảnh sẽ chưa xuất hiện trong lịch sử Firebase. Với servo, `CCCD_DOOR_GPIO_PIN` là chân tín hiệu theo số BCM; ví dụ BCM18 là chân vật lý 12. Servo quay tới `OPEN_ANGLE`, giữ số giây trong `CCCD_DOOR_UNLOCK_SECONDS`, rồi quay về `CLOSED_ANGLE`. Chỉnh hai góc theo cơ cấu cửa của bạn. Dùng nguồn phù hợp cho servo và nối chung GND với Raspberry Pi. Nếu dùng relay thay servo, đặt `CCCD_DOOR_ACTUATOR=relay` và cấu hình mức kích `CCCD_DOOR_RELAY_ACTIVE_HIGH`.
 
 Ngưỡng `0.363` là điểm bắt đầu theo demo SFace của OpenCV Zoo; cần hiệu chỉnh bằng camera thực tế và dữ liệu có sự đồng ý trước khi dùng. Ngưỡng cao hơn chặt hơn nhưng có thể từ chối đúng người. Sau khi cấu hình, khởi động lại service:
 
@@ -89,7 +94,7 @@ systemctl --user restart cccd-web.service
 
 1. Đọc CCCD qua NFC và ghi dữ liệu vào Firestore. Nếu Firebase ghi lỗi, lượt quét báo lỗi và không thể xác thực/mở cửa.
 2. Bật camera xác thực, nhìn thẳng vào camera rồi chọn **Xác thực và mở cửa**.
-3. Server so ảnh khuôn mặt webcam với ảnh DG2 của thẻ vừa quét. Chỉ khi điểm vượt ngưỡng mới phát xung relay; mỗi lượt quét chỉ mở cửa một lần và hết hạn sau 5 phút.
+3. Server so ảnh khuôn mặt webcam với ảnh DG2 của thẻ vừa quét. Trang báo rõ khi khuôn mặt đã khớp; chỉ khi điểm vượt ngưỡng mới điều khiển servo hoặc phát xung relay. Mỗi lượt quét chỉ mở cửa một lần và hết hạn sau 5 phút.
 
 Đây là bản đối chiếu khuôn mặt 1:1, chưa có kiểm tra người thật/chống giả mạo; ảnh hoặc video phát lại có thể đánh lừa hệ thống. Không dùng nó làm lớp bảo vệ duy nhất cho khu vực cần an ninh cao. Web server hiện dùng HTTP và Basic Auth, vì vậy chỉ truy cập qua mạng tin cậy, không mở trực tiếp ra Internet.
 

@@ -28,6 +28,7 @@ RUNNING_STATES = {
     "reading_dg2",
     "saving_firebase",
     "verifying_face",
+    "opening_door",
 }
 
 
@@ -154,7 +155,7 @@ class ScanManager:
                 raise RuntimeError("Cửa đã mở cho CCCD này. Quét thẻ mới để bắt đầu lượt khác.")
             if self._face_verifying:
                 raise RuntimeError("Đang xác thực khuôn mặt. Hãy đợi lượt đó kết thúc.")
-            if self._state["status"] not in {"done", "face_mismatch", "face_error"}:
+            if self._state["status"] not in {"done", "face_mismatch", "face_error", "face_matched"}:
                 raise RuntimeError("Hãy đọc và lưu CCCD lên Firebase trước khi xác thực khuôn mặt.")
             if not self._record_id:
                 raise RuntimeError("Chưa có bản ghi CCCD đã lưu trên Firebase.")
@@ -183,6 +184,17 @@ class ScanManager:
             self._state = {
                 **self._state,
                 "status": status,
+                "message": message,
+                "progress": None,
+                "face_score": score,
+            }
+
+    def set_face_opening(self, message: str, score: float) -> None:
+        """Show a successful match while the servo/relay is being actuated."""
+        with self._lock:
+            self._state = {
+                **self._state,
+                "status": "opening_door",
                 "message": message,
                 "progress": None,
                 "face_score": score,
@@ -414,14 +426,43 @@ class WebHandler(BaseHTTPRequestHandler):
                     self._send_json(200, {"matched": False, "unlocked": False, "score": score, "message": message})
                     return
 
-                from .door import unlock_door
+                match_message = f"Khuôn mặt đã khớp (điểm {score:.3f})."
+                self.server.scan_manager.set_face_opening(f"{match_message} Đang điều khiển servo…", score)
+                try:
+                    from .door import unlock_door
 
-                unlock_door()
-                message = f"Khuôn mặt khớp (điểm {score:.3f}). Đã kích relay mở cửa."
+                    actuator = unlock_door()
+                except Exception as exc:
+                    message = f"{match_message} Chưa mở được cửa: {exc}"
+                    self.server.scan_manager.finish_face_verification(
+                        status="face_matched", message=message, score=score
+                    )
+                    self._send_json(
+                        200,
+                        {
+                            "matched": True,
+                            "unlocked": False,
+                            "status": "face_matched",
+                            "score": score,
+                            "message": message,
+                        },
+                    )
+                    return
+
+                message = f"{match_message} Đã điều khiển {actuator} mở cửa."
                 self.server.scan_manager.finish_face_verification(
                     status="door_opened", message=message, score=score
                 )
-                self._send_json(200, {"matched": True, "unlocked": True, "score": score, "message": message})
+                self._send_json(
+                    200,
+                    {
+                        "matched": True,
+                        "unlocked": True,
+                        "status": "door_opened",
+                        "score": score,
+                        "message": message,
+                    },
+                )
             except RuntimeError as exc:
                 message = str(exc) or "Không xác thực được khuôn mặt."
                 if photo_path is not None:

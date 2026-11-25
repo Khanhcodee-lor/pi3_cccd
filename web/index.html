@@ -156,7 +156,7 @@
   <main>
     <div class="eyebrow">Raspberry Pi · NFC</div>
     <h1>Đọc thông tin CCCD</h1>
-    <p class="intro">Đọc CCCD bằng NFC, lưu thông tin lên Firebase, rồi xác thực khuôn mặt trước khi kích relay mở cửa.</p>
+    <p class="intro">Đọc CCCD bằng NFC, lưu thông tin lên Firebase, rồi xác thực khuôn mặt trước khi điều khiển chốt cửa.</p>
 
     <nav class="steps" aria-label="Các bước mở cửa">
       <div class="step current" id="flowStep1" aria-current="step">
@@ -335,8 +335,8 @@
       faceCameraButton.hidden = !canVerifyFace;
       verifyButton.hidden = !canVerifyFace;
       faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera để thấy khuôn mặt';
-      faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'door_opened'].includes(currentStatus);
-      verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'door_opened'].includes(currentStatus);
+      faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'opening_door', 'door_opened'].includes(currentStatus);
+      verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'opening_door', 'door_opened'].includes(currentStatus);
     }
 
     function normalizeHistoryText(value) {
@@ -462,7 +462,7 @@
         if (current) step.setAttribute('aria-current', 'step');
         else step.removeAttribute('aria-current');
       });
-      const busy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(currentStatus);
+      const busy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face', 'opening_door'].includes(currentStatus);
       mrzReadyHint.hidden = !mrzReady;
       continueButton.disabled = !mrzReady || cameraActive || busy;
       startButton.disabled = !mrzReady || currentTask !== 2 || busy || currentStatus === 'camera_scanning';
@@ -472,13 +472,13 @@
       currentStatus = state.status;
       if (['waiting_for_card', 'reading_dg1', 'reading_dg2', 'saving_firebase'].includes(state.status)
         || (state.status === 'authenticating' && currentTask === 2)) showTask(2);
-      if (['verifying_face', 'face_error', 'face_mismatch', 'door_opened'].includes(state.status)) showTask(3);
+      if (['verifying_face', 'opening_door', 'face_error', 'face_mismatch', 'face_matched', 'door_opened'].includes(state.status)) showTask(3);
       if (state.status === 'camera_scanning') showTask(faceCameraActive ? 3 : 1);
       statusBox.className = 'status';
-      const scanBusy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(state.status);
+      const scanBusy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face', 'opening_door'].includes(state.status);
       const busy = scanBusy || state.status === 'camera_scanning';
       if (busy) statusBox.classList.add('busy');
-      if (state.status === 'done' || state.status === 'camera_done' || state.status === 'door_opened') statusBox.classList.add('success');
+      if (state.status === 'done' || state.status === 'camera_done' || state.status === 'opening_door' || state.status === 'face_matched' || state.status === 'door_opened') statusBox.classList.add('success');
       if (['error', 'camera_error', 'face_error', 'face_mismatch'].includes(state.status)) statusBox.classList.add('error');
       statusText.textContent = state.message || '';
       photoButton.disabled = scanBusy || state.status === 'camera_scanning';
@@ -492,7 +492,7 @@
         progress.hidden = true;
         progressBar.style.width = '25%';
       }
-      if (state.data && ['done', 'verifying_face', 'face_error', 'face_mismatch', 'door_opened'].includes(state.status)) showResult(state);
+      if (state.data && ['done', 'verifying_face', 'opening_door', 'face_error', 'face_mismatch', 'face_matched', 'door_opened'].includes(state.status)) showResult(state);
       if (state.status === 'done' && historyLoaded && !historyContent.hidden) loadHistory(true);
       if (state.status === 'idle') {
         result.style.display = 'none';
@@ -598,7 +598,7 @@
         const state = await response.json();
         if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase'].includes(state.status)) showTask(2);
         setStatus(state);
-        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(state.status)) {
+        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face', 'opening_door'].includes(state.status)) {
           setTimeout(() => { polling = false; pollStatus(); }, 700);
           return;
         }
@@ -836,7 +836,7 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không xác thực được khuôn mặt.');
-        setStatus({ status: payload.unlocked ? 'door_opened' : 'face_mismatch', message: payload.message });
+        setStatus({ status: payload.status || (payload.unlocked ? 'door_opened' : payload.matched ? 'face_matched' : 'face_mismatch'), message: payload.message });
         if (payload.unlocked) await stopFaceCamera();
       } catch (error) {
         setStatus({ status: 'face_error', message: error.message });
