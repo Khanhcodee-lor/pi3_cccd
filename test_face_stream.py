@@ -65,10 +65,11 @@ if hasattr(cv2, 'CascadeClassifier'):
 else:
     print("[!] Phiên bản OpenCV hiện tại (v5.x) không hỗ trợ CascadeClassifier, sẽ stream camera thuần.")
 
-# Buffer lưu trữ khung hình mới nhất
+# Buffer lưu trữ khung hình và tuỳ chọn màu sắc
 class StreamBuffer:
     def __init__(self):
         self.frame: bytes | None = None
+        self.swap_rb: bool = True  # Mặc định đảo kênh R-B vì Picamera2 xuất RGB, OpenCV cần BGR
         self.lock = Lock()
 
     def set_frame(self, frame_bytes: bytes):
@@ -78,6 +79,15 @@ class StreamBuffer:
     def get_frame(self) -> bytes | None:
         with self.lock:
             return self.frame
+
+    def toggle_color(self) -> bool:
+        with self.lock:
+            self.swap_rb = not self.swap_rb
+            return self.swap_rb
+
+    def should_swap_rb(self) -> bool:
+        with self.lock:
+            return self.swap_rb
 
 buffer = StreamBuffer()
 
@@ -116,8 +126,21 @@ HTML_PAGE = """<!DOCTYPE html>
             aspect-ratio: 4 / 3;
             background: #000;
         }
+        .controls {
+            margin: 14px 0;
+        }
+        .btn {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #4CAF50; border-color: #4CAF50; }
         .status-bar {
-            margin-top: 12px;
             font-size: 14px;
             color: #aaa;
         }
@@ -138,6 +161,9 @@ HTML_PAGE = """<!DOCTYPE html>
     <h2>Raspberry Pi Camera v2</h2>
     <div class="stream-container">
         <img id="cameraView" alt="Đang tải video..." src="/frame.jpg" />
+    </div>
+    <div class="controls">
+        <button class="btn" onclick="toggleColor()">🔄 Đổi kênh màu (Fix màu da)</button>
     </div>
     <div class="status-bar" id="statusText">Đang kết nối camera...</div>
 
@@ -182,6 +208,16 @@ HTML_PAGE = """<!DOCTYPE html>
             }
         }
 
+        async function toggleColor() {
+            try {
+                const res = await fetch('/toggle-color', { method: 'POST' });
+                const data = await res.json();
+                status.textContent = 'Đã đổi chế độ màu (Swap: ' + data.swap_rb + ')';
+            } catch(e) {
+                alert('Không thể đổi màu: ' + e);
+            }
+        }
+
         fetchFrame();
     </script>
 </body>
@@ -191,6 +227,18 @@ HTML_PAGE = """<!DOCTYPE html>
 class WebStreamHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
+
+    def do_POST(self):
+        if self.path == '/toggle-color':
+            is_swapped = buffer.toggle_color()
+            resp = ('{"status": "ok", "swap_rb": %s}' % ('true' if is_swapped else 'false')).encode('utf-8')
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+        else:
+            self.send_error(404)
 
     def do_GET(self):
         if self.path == '/' or self.path.startswith('/?'):
@@ -252,12 +300,11 @@ def run_camera():
     if HAS_PICAMERA2:
         try:
             picam2 = Picamera2()
-            # Dùng trực tiếp BGR888 chuẩn của OpenCV để màu sắc chuẩn xác nhất (không bị đảo kênh màu R/B)
-            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "BGR888"})
+            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
             picam2.configure(config)
             picam2.start()
             use_picam2 = True
-            print("[+] Đang dùng Picamera2 định dạng BGR888 (màu sắc tự nhiên)")
+            print("[+] Đang dùng Picamera2 chuẩn libcamera")
         except Exception as e:
             print(f"[-] Picamera2 không khả dụng ({e}), thử VideoCapture...")
 
@@ -273,13 +320,20 @@ def run_camera():
     while True:
         try:
             if use_picam2:
-                # capture_array() trả về mảng BGR nguyên bản từ camera
-                frame_bgr = picam2.capture_array()
+                # Picamera2 trả về mảng RGB
+                frame_raw = picam2.capture_array()
             else:
-                ret, frame_bgr = cap.read()
+                ret, frame_raw = cap.read()
                 if not ret:
                     time.sleep(0.05)
                     continue
+
+            # Đổi kênh màu R/B nếu cần (OpenCV imencode cần BGR)
+            if buffer.should_swap_rb():
+                # Lật kênh Red và Blue để da người trở về màu tự nhiên
+                frame_bgr = frame_raw[:, :, ::-1].copy()
+            else:
+                frame_bgr = frame_raw.copy()
 
             # Nhận diện khuôn mặt nếu có mô hình
             face_count = 0
