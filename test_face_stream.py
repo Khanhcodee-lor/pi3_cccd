@@ -11,7 +11,7 @@ import time
 import socket
 import urllib.request
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from threading import Thread, Lock
 import cv2
 
@@ -21,7 +21,7 @@ try:
 except ImportError:
     HAS_PICAMERA2 = False
 
-# Tìm file haarcascade_frontalface_default.xml
+# Tìm hoặc tải file haarcascade_frontalface_default.xml
 def get_cascade_path():
     script_dir = Path(__file__).resolve().parent
     local_file = script_dir / "haarcascade_frontalface_default.xml"
@@ -42,7 +42,6 @@ def get_cascade_path():
         if os.path.isfile(cv_data_path):
             return cv_data_path
 
-    # Tự động tải nếu chưa có
     url = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
     print(f"[*] Đang tải mô hình nhận diện khuôn mặt về {local_file}...")
     try:
@@ -63,71 +62,171 @@ if face_cascade.empty():
     print("[-] LỖI: Không thể tải mô hình Haar Cascade vào OpenCV.")
     sys.exit(1)
 
-# Biến lưu trữ khung hình mới nhất để stream web
+# Buffer lưu trữ khung hình mới nhất
 class StreamBuffer:
     def __init__(self):
-        self.frame = None
+        self.frame: bytes | None = None
         self.lock = Lock()
 
-    def set_frame(self, frame_bytes):
+    def set_frame(self, frame_bytes: bytes):
         with self.lock:
             self.frame = frame_bytes
 
-    def get_frame(self):
+    def get_frame(self) -> bytes | None:
         with self.lock:
             return self.frame
 
 buffer = StreamBuffer()
 
+HTML_PAGE = """<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <title>Pi Cam v2 - Nhận Diện Khuôn Mặt</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-align: center;
+            background: #121212;
+            color: #eee;
+            margin: 0;
+            padding: 16px;
+        }
+        h2 { margin: 10px 0; color: #4CAF50; font-size: 22px; }
+        .stream-container {
+            position: relative;
+            display: inline-block;
+            background: #1e1e1e;
+            border: 2px solid #333;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            max-width: 100%;
+        }
+        #cameraView {
+            display: block;
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            aspect-ratio: 4 / 3;
+            background: #000;
+        }
+        .status-bar {
+            margin-top: 12px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #2e7d32;
+            color: #fff;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <span class="badge">LIVE STREAM</span>
+    <h2>Raspberry Pi Camera v2</h2>
+    <div class="stream-container">
+        <img id="cameraView" alt="Đang tải video..." src="/frame.jpg" />
+    </div>
+    <div class="status-bar" id="statusText">Đang kết nối camera...</div>
+
+    <script>
+        const img = document.getElementById('cameraView');
+        const status = document.getElementById('statusText');
+        let busy = false;
+        let lastFrameUrl = null;
+        let frameCount = 0;
+        let fpsCounter = 0;
+        let lastTime = performance.now();
+
+        async function fetchFrame() {
+            if (busy) return;
+            busy = true;
+            try {
+                const response = await fetch('/frame.jpg?t=' + Date.now(), { cache: 'no-store' });
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const newUrl = URL.createObjectURL(blob);
+                    const oldUrl = lastFrameUrl;
+                    lastFrameUrl = newUrl;
+                    img.onload = () => {
+                        if (oldUrl) URL.revokeObjectURL(oldUrl);
+                    };
+                    img.src = newUrl;
+
+                    frameCount++;
+                    const now = performance.now();
+                    if (now - lastTime >= 1000) {
+                        fpsCounter = frameCount;
+                        frameCount = 0;
+                        lastTime = now;
+                        status.textContent = 'Đang nhận luồng video (' + fpsCounter + ' FPS hiển thị)';
+                    }
+                }
+            } catch (err) {
+                status.textContent = 'Mất kết nối với camera, đang thử lại...';
+            } finally {
+                busy = false;
+                setTimeout(fetchFrame, 40); // Lấy ~25 khung hình/giây
+            }
+        }
+
+        fetchFrame();
+    </script>
+</body>
+</html>
+"""
+
 class WebStreamHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Giảm bớt log terminal để không bị tràn màn hình
+        pass
+
     def do_GET(self):
-        if self.path == '/':
+        if self.path == '/' or self.path.startswith('/?'):
+            data = HTML_PAGE.encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
             self.end_headers()
-            html = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Pi Cam v2 - Live Face Detection</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1">
-                <style>
-                    body { font-family: sans-serif; text-align: center; background: #1a1a1a; color: #fff; margin: 0; padding: 20px; }
-                    h2 { margin-bottom: 10px; color: #4CAF50; }
-                    .stream-box { display: inline-block; border: 3px solid #333; border-radius: 8px; overflow: hidden; max-width: 95vw; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-                    img { width: 100%; max-width: 640px; height: auto; display: block; }
-                    p { color: #aaa; font-size: 14px; margin-top: 15px; }
-                </style>
-            </head>
-            <body>
-                <h2>Raspberry Pi Camera v2 - Live Face Detection</h2>
-                <div class="stream-box">
-                    <img src="/stream.mjpg" />
-                </div>
-                <p>Khung xanh: Khuôn mặt phát hiện | FPS & Số mặt hiển thị góc trái trên</p>
-            </body>
-            </html>
-            """
-            self.wfile.write(html.encode('utf-8'))
+            self.wfile.write(data)
 
-        elif self.path == '/stream.mjpg':
+        elif self.path.startswith('/frame.jpg'):
+            frame = buffer.get_frame()
+            if frame is None:
+                self.send_response(503)
+                self.send_header('Retry-After', '1')
+                self.end_headers()
+                self.wfile.write(b"Camera warming up")
+            else:
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(frame)))
+                self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+                self.send_header('Pragma', 'no-cache')
+                self.end_headers()
+                self.wfile.write(frame)
+
+        elif self.path.startswith('/stream.mjpg'):
             self.send_response(200)
-            self.send_header('Age', '0')
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
             self.send_header('Cache-Control', 'no-cache, private')
             self.send_header('Pragma', 'no-cache')
-            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
             self.end_headers()
             try:
                 while True:
                     frame = buffer.get_frame()
                     if frame is not None:
-                        self.wfile.write(b'--FRAME\r\n')
-                        self.send_header('Content-Type', 'image/jpeg')
-                        self.send_header('Content-Length', str(len(frame)))
-                        self.end_headers()
-                        self.wfile.write(frame)
-                        self.wfile.write(b'\r\n')
-                    time.sleep(0.04) # ~25 fps
+                        self.wfile.write(b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                    time.sleep(0.04)
             except (ConnectionResetError, BrokenPipeError):
                 pass
         else:
@@ -151,14 +250,13 @@ def run_camera():
     if HAS_PICAMERA2:
         try:
             picam2 = Picamera2()
-            # Cấu hình 640x480 để Pi 3 xử lý mượt và ít nóng
             config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
             picam2.configure(config)
             picam2.start()
             use_picam2 = True
-            print("[+] Đang dùng thư viện Picamera2 (chuẩn Pi OS)")
+            print("[+] Đang dùng Picamera2 (phần cứng tăng tốc)")
         except Exception as e:
-            print(f"[-] Không khởi tạo được Picamera2 ({e}), thử dùng OpenCV VideoCapture...")
+            print(f"[-] Picamera2 không khả dụng ({e}), thử VideoCapture...")
 
     if not use_picam2:
         cap = cv2.VideoCapture(0)
@@ -167,59 +265,67 @@ def run_camera():
         print("[+] Đang dùng OpenCV VideoCapture(0)")
 
     prev_time = time.time()
+    fps_smooth = 0.0
 
     while True:
-        if use_picam2:
-            frame_rgb = picam2.capture_array()
-            frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
-        else:
-            ret, frame_bgr = cap.read()
-            if not ret:
-                time.sleep(0.1)
-                continue
+        try:
+            if use_picam2:
+                frame_rgb = picam2.capture_array()
+                frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+            else:
+                ret, frame_bgr = cap.read()
+                if not ret:
+                    time.sleep(0.05)
+                    continue
 
-        # Chuyển ảnh xám để nhận diện khuôn mặt
-        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.15,
-            minNeighbors=4,
-            minSize=(40, 40)
-        )
+            # Nhận diện khuôn mặt trên ảnh xám
+            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.15,
+                minNeighbors=4,
+                minSize=(40, 40)
+            )
 
-        # Vẽ khung xanh quanh từng khuôn mặt
-        for (x, y, w, h) in faces:
-            cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            # Vẽ khung xanh quanh mặt
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(
+                    frame_bgr,
+                    "Face",
+                    (x, y - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 0),
+                    2
+                )
+
+            # Tính FPS
+            curr_time = time.time()
+            dt = curr_time - prev_time
+            prev_time = curr_time
+            if dt > 0:
+                current_fps = 1.0 / dt
+                fps_smooth = 0.9 * fps_smooth + 0.1 * current_fps if fps_smooth > 0 else current_fps
+
             cv2.putText(
                 frame_bgr,
-                "Face",
-                (x, y - 8),
+                f"FPS: {fps_smooth:.1f} | Faces: {len(faces)}",
+                (15, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 255, 0),
+                0.7,
+                (0, 255, 255),
                 2
             )
 
-        # Tính FPS thực tế
-        curr_time = time.time()
-        fps = 1.0 / (curr_time - prev_time) if (curr_time - prev_time) > 0 else 0
-        prev_time = curr_time
+            # Nén ảnh JPEG (chất lượng 75 để truyền nhanh qua Wi-Fi)
+            ret, jpeg = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            if ret:
+                buffer.set_frame(jpeg.tobytes())
 
-        # Vẽ thông tin FPS & số lượng mặt lên góc ảnh
-        cv2.putText(
-            frame_bgr,
-            f"FPS: {fps:.1f} | Faces: {len(faces)}",
-            (15, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 255),
-            2
-        )
-
-        # Nén thành JPEG để stream web
-        ret, jpeg = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
-        if ret:
-            buffer.set_frame(jpeg.tobytes())
+        except Exception as exc:
+            print(f"[!] Lỗi trong luồng camera: {exc}")
+            time.sleep(0.1)
 
 def main():
     ip = get_ip()
@@ -232,14 +338,14 @@ def main():
     print(f"    👉 http://{ip}:{port}")
     print(f"    (Hoặc: http://localhost:{port} nếu mở ngay trên Pi)")
     print("=" * 60)
-    print("[*] Đang khởi chạy web server...")
 
-    # Chạy luồng đọc camera và xử lý AI
+    # Chạy luồng đọc camera
     cam_thread = Thread(target=run_camera, daemon=True)
     cam_thread.start()
 
-    # Chạy Web Server stream
-    server = HTTPServer(('0.0.0.0', port), WebStreamHandler)
+    # Chạy ThreadingHTTPServer (đa luồng, không bị treo trình duyệt)
+    server = ThreadingHTTPServer(('0.0.0.0', port), WebStreamHandler)
+    print(f"[*] Server đang lắng nghe tại port {port}...")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
