@@ -70,6 +70,8 @@ class StreamBuffer:
     def __init__(self):
         self.frame: bytes | None = None
         self.swap_rb: bool = True  # Mặc định đảo kênh R-B vì Picamera2 xuất RGB, OpenCV cần BGR
+        self.contrast: float = 1.25  # Tăng tương phản để hình ảnh trong trẻo, không bị mù sương
+        self.sharpness: float = 1.6 # Tăng độ nét chi tiết
         self.lock = Lock()
 
     def set_frame(self, frame_bytes: bytes):
@@ -303,6 +305,22 @@ def run_camera():
             config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
             picam2.configure(config)
             picam2.start()
+
+            # Tinh chỉnh ISP phần cứng của Raspberry Pi để hình ảnh trong, sắc nét và tươi sáng hơn
+            try:
+                controls = {}
+                if "Contrast" in picam2.camera_controls:
+                    controls["Contrast"] = 1.25  # Tăng độ tương phản để xóa mù sương
+                if "Sharpness" in picam2.camera_controls:
+                    controls["Sharpness"] = 1.6  # Tăng độ sắc nét chi tiết
+                if "Saturation" in picam2.camera_controls:
+                    controls["Saturation"] = 1.15 # Tăng độ tươi màu
+                if controls:
+                    picam2.set_controls(controls)
+                    print(f"[+] Đã cấu hình ISP tối ưu chất lượng hình ảnh: {controls}")
+            except Exception as e:
+                print(f"[-] Không thể set camera controls: {e}")
+
             use_picam2 = True
             print("[+] Đang dùng Picamera2 chuẩn libcamera")
         except Exception as e:
@@ -376,8 +394,8 @@ def run_camera():
                 2
             )
 
-            # Nén ảnh JPEG
-            ret, jpeg = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            # Nén ảnh JPEG chất lượng cao hơn (85 thay vì 75 để ảnh trong và mịn, không vỡ hạt)
+            ret, jpeg = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
             if ret:
                 buffer.set_frame(jpeg.tobytes())
 
