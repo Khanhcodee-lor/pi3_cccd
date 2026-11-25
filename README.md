@@ -14,7 +14,7 @@ python3 -m venv .venv
 
 ## Web server xem thông tin thẻ
 
-Web app chạy trên Pi và dùng đầu đọc NFC đang cắm USB. Khi quét, trang hiển thị các trường có trong MRZ và ảnh chân dung nếu trình duyệt hỗ trợ định dạng ảnh trên thẻ. BAC yêu cầu MRZ key info gồm đúng 24 ký tự. Có thể nhập mã bằng tay, bật webcam USB cắm vào Pi để xem trước và tự nhận diện MRZ, hoặc chọn ảnh mặt sau CCCD. Webcam được giữ mở liên tục ở 1280×720; OCR chạy riêng trên Pi, kiểm tra ba check digit ICAO rồi điền mã vào ô để người dùng xem lại trước khi quét NFC. Ảnh webcam chỉ nằm tạm trong bộ nhớ khi xử lý. Giữ nguyên ký tự `<`, bỏ khoảng trắng.
+Web app chạy trên Pi và dùng đầu đọc NFC đang cắm USB. Quy trình web tách thành ba màn hình: đọc MRZ, quét chip NFC, rồi xem kết quả. Khi quét, trang hiển thị các trường trong MRZ và ảnh chân dung nếu trình duyệt hỗ trợ định dạng ảnh trên thẻ. BAC yêu cầu MRZ key info gồm đúng 24 ký tự. Có thể nhập mã bằng tay, bật webcam USB cắm vào Pi để xem trước và tự nhận diện MRZ, hoặc chọn ảnh mặt sau CCCD. Webcam thử chế độ MJPEG 1280×720 trước, rồi tự dùng cấu hình mặc định của thiết bị nếu chế độ này không được hỗ trợ. OCR chạy trên Pi, kiểm tra ba check digit ICAO rồi điền mã vào ô để người dùng xem lại trước khi quét NFC. Camera tự tắt sau hai phút; ảnh webcam chỉ nằm tạm trong bộ nhớ khi xử lý. Giữ nguyên ký tự `<`, bỏ khoảng trắng.
 
 Cài Tesseract OCR, `ffmpeg` để stream webcam và `fswebcam` cho chức năng chụp ảnh đơn:
 
@@ -22,7 +22,7 @@ Cài Tesseract OCR, `ffmpeg` để stream webcam và `fswebcam` cho chức năng
 sudo apt install tesseract-ocr ffmpeg fswebcam
 ```
 
-Mặc định ứng dụng chụp từ `/dev/video0`. Nếu service báo không có quyền, thêm user `khanh` vào nhóm `video` bằng `sudo usermod -aG video khanh`, sau đó khởi động lại Pi. Có thể chọn thiết bị khác bằng biến `CCCD_CAMERA_DEVICE` trong `~/.config/p3_cccd/web.env`.
+Mặc định ứng dụng chụp từ `/dev/video0`. Nếu service báo không có quyền, thêm user chạy service (`khanh` trong ví dụ này) vào nhóm `video` bằng `sudo usermod -aG video khanh`, rồi khởi động lại Pi để user service nhận quyền mới. Có thể chọn thiết bị khác bằng biến `CCCD_CAMERA_DEVICE` trong `~/.config/p3_cccd/web.env`.
 
 Cài web server thành user service để nó tự chạy sau khi Pi khởi động:
 
