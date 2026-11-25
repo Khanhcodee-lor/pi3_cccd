@@ -32,7 +32,15 @@
     .eyebrow { color: var(--green); font-size: .76rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
     h1 { margin: 10px 0 9px; font-size: clamp(2rem, 5vw, 3.3rem); letter-spacing: -.045em; line-height: 1.05; }
     .intro { max-width: 660px; margin: 0; color: var(--muted); line-height: 1.65; }
-    .layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 20px; margin-top: 30px; align-items: start; }
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+    .step { display: flex; gap: 12px; min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.82); color: var(--muted); transition: border-color .15s, background .15s; }
+    .step.current { border-color: var(--green); background: #fff; box-shadow: 0 0 0 3px rgba(18,106,91,.08); }
+    .step.complete { border-color: #b6d9cd; background: var(--mint); }
+    .step-number { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 50%; background: #e8efed; color: #58716c; font-size: .85rem; font-weight: 800; }
+    .step.current .step-number, .step.complete .step-number { background: var(--green); color: white; }
+    .step strong { display: block; margin: 1px 0 4px; color: var(--ink); font-size: .86rem; }
+    .step p { margin: 0; font-size: .76rem; line-height: 1.45; }
+    .layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 20px; margin-top: 18px; align-items: start; }
     .panel { background: var(--white); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 12px 34px rgba(31, 69, 63, .06); }
     .scan-panel { padding: 24px; }
     .panel-title { margin: 0 0 6px; font-size: 1.1rem; letter-spacing: -.02em; }
@@ -76,6 +84,7 @@
     .clear { padding: 8px 11px; background: #f0f5f3; color: var(--green-dark); font-size: .78rem; }
     .result-content { display: grid; grid-template-columns: 170px 1fr; gap: 22px; padding: 22px; }
     .verification { margin: 0 22px 22px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #f7fbf9; }
+    .verification h3 { margin: 0 0 6px; font-size: .95rem; }
     .verification p { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.55; }
     .verification-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
     .verification-actions button { min-height: 44px; padding: 10px 12px; background: #e8f2ef; color: var(--green-dark); }
@@ -95,6 +104,8 @@
     pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font: .77rem/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
     @media (max-width: 720px) {
       main { padding-top: 30px; }
+      .steps { grid-template-columns: 1fr; gap: 8px; }
+      .step { padding: 12px 14px; }
       .layout { grid-template-columns: 1fr; }
       .empty { min-height: 205px; }
     }
@@ -113,33 +124,48 @@
     <h1>Đọc thông tin CCCD</h1>
     <p class="intro">Đọc CCCD bằng NFC, lưu thông tin lên Firebase, rồi xác thực khuôn mặt trước khi kích relay mở cửa.</p>
 
+    <nav class="steps" aria-label="Các bước mở cửa">
+      <div class="step current" id="flowStep1" aria-current="step">
+        <span class="step-number">1</span>
+        <div><strong>Lấy mã MRZ</strong><p>Nhập 24 ký tự, bật camera Pi hoặc chọn ảnh mặt sau CCCD.</p></div>
+      </div>
+      <div class="step" id="flowStep2">
+        <span class="step-number">2</span>
+        <div><strong>Quét CCCD và lưu dữ liệu</strong><p>Đặt thẻ lên đầu đọc NFC rồi bấm quét. Dữ liệu được lưu vào Firestore.</p></div>
+      </div>
+      <div class="step" id="flowStep3">
+        <span class="step-number">3</span>
+        <div><strong>Xác thực khuôn mặt</strong><p>Sau khi lưu thành công, bật camera xác thực. Nếu khớp ảnh trên thẻ, relay mở cửa.</p></div>
+      </div>
+    </nav>
+
     <div class="layout">
       <section class="panel scan-panel" aria-labelledby="scan-title">
-        <h2 class="panel-title" id="scan-title">Bắt đầu quét</h2>
-        <p class="sub">Giữ CCCD trên đầu đọc trong lúc xác thực và đọc dữ liệu.</p>
+        <h2 class="panel-title" id="scan-title">Bước 1 · Nhập mã MRZ</h2>
+        <p class="sub" id="scan-help">Mã MRZ có 24 ký tự ở mặt sau thẻ. Có thể nhập tay, cho camera Pi đọc hoặc chọn ảnh.</p>
         <form id="scanForm">
-          <label for="mrzKey">MRZ key info · 24 ký tự</label>
+          <label for="mrzKey">Mã MRZ · 24 ký tự</label>
           <input id="mrzKey" name="mrz_key_info" type="text" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••" required>
-          <p class="hint">Ghép số giấy tờ, ngày sinh và ngày hết hạn cùng ký tự kiểm tra theo MRZ. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
-          <button class="camera-button" id="cameraButton" type="button">Bật camera Pi</button>
+          <p class="hint">Mã gồm số giấy tờ, ngày sinh, ngày hết hạn và ký tự kiểm tra. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
+          <button class="camera-button" id="cameraButton" type="button">Bật camera Pi để đọc mã MRZ</button>
           <div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ webcam Pi"></div>
-          <p class="hint">Brio 100 lấy nét cố định: đừng dí thẻ sát ống kính. Đặt thẻ ngang khoảng cách với khuôn mặt, đủ sáng và giữ yên; Pi sẽ tự đọc MRZ.</p>
+          <p class="hint">Đưa mặt sau CCCD vào khung hình để camera đọc mã. Giữ thẻ ngang, đủ sáng và không dí sát ống kính.</p>
           <label class="visually-hidden" for="mrzPhoto">Chọn ảnh mặt sau CCCD</label>
           <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
-          <button class="photo-button" id="photoButton" type="button">Hoặc chọn ảnh từ điện thoại / máy tính</button>
-          <p class="hint">Ảnh bạn chọn chỉ giữ tạm để đọc MRZ. Sau khi quét NFC, ảnh chân dung DG2 được lưu trong <code>output/</code> để hiển thị và đối chiếu trên Pi.</p>
-          <button class="primary" id="startButton" type="submit">Quét thẻ</button>
+          <button class="photo-button" id="photoButton" type="button">Hoặc chọn ảnh mặt sau CCCD</button>
+          <p class="hint">Khi đã có mã MRZ, đặt CCCD lên đầu đọc NFC rồi chuyển sang bước 2.</p>
+          <button class="primary" id="startButton" type="submit">Bước 2 · Quét CCCD và lưu Firebase</button>
         </form>
         <div class="status" id="status" role="status" aria-live="polite">
           <span class="dot"></span>
-          <div><span id="statusText">Nhập MRZ key info rồi bắt đầu quét.</span><div class="progress" id="progress" hidden><span id="progressBar"></span></div></div>
+          <div><span id="statusText">Bước 1: lấy mã MRZ 24 ký tự, sau đó đặt thẻ lên đầu đọc NFC.</span><div class="progress" id="progress" hidden><span id="progressBar"></span></div></div>
         </div>
         <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Firestore chỉ nhận các trường văn bản; ảnh chân dung CCCD và webcam được xử lý trên Pi. Cần camera và relay GPIO đã cấu hình.</p>
       </section>
 
       <section class="panel result-panel" aria-live="polite">
         <div class="empty" id="emptyState">
-          <div><div class="empty-icon" aria-hidden="true">▣</div><strong>Chưa có dữ liệu thẻ</strong><span>Kết quả sẽ hiện sau khi quét thành công.</span></div>
+          <div><div class="empty-icon" aria-hidden="true">▣</div><strong>Chưa có dữ liệu thẻ</strong><span>Sau khi hoàn thành bước 2, thông tin thẻ và bước xác thực sẽ hiện tại đây.</span></div>
         </div>
         <div class="result" id="result">
           <div class="result-head"><h2>Thông tin trên thẻ</h2><button type="button" class="clear" id="clearButton">Xóa kết quả</button></div>
@@ -148,10 +174,11 @@
             <div class="fields" id="fields"></div>
           </div>
           <div class="verification" id="verification" hidden>
+            <h3>Bước 3 · Xác thực khuôn mặt</h3>
             <p id="verificationHint">Dữ liệu CCCD đã được lưu. Bật camera, đặt khuôn mặt vào khung hình rồi xác thực.</p>
             <div class="verification-actions">
-              <button type="button" id="faceCameraButton">Bật camera xác thực</button>
-              <button type="button" class="verify" id="verifyButton" disabled>Xác thực và mở cửa</button>
+              <button type="button" id="faceCameraButton">Bật camera để thấy khuôn mặt</button>
+              <button type="button" class="verify" id="verifyButton" disabled>So khớp và mở cửa</button>
             </div>
           </div>
           <details><summary>Xem MRZ gốc</summary><pre id="rawMrz"></pre></details>
@@ -174,6 +201,13 @@
     const progressBar = document.getElementById('progressBar');
     const emptyState = document.getElementById('emptyState');
     const result = document.getElementById('result');
+    const scanTitle = document.getElementById('scan-title');
+    const scanHelp = document.getElementById('scan-help');
+    const workflowSteps = [
+      document.getElementById('flowStep1'),
+      document.getElementById('flowStep2'),
+      document.getElementById('flowStep3')
+    ];
     const verification = document.getElementById('verification');
     const verificationHint = document.getElementById('verificationHint');
     const faceCameraButton = document.getElementById('faceCameraButton');
@@ -184,6 +218,8 @@
     let faceCameraReady = false;
     let canVerifyFace = false;
     let currentStatus = 'idle';
+    let mrzReady = false;
+    let cccdSaved = false;
     let cameraFrameBusy = false;
     let cameraFrameUrl = null;
 
@@ -199,9 +235,32 @@
       verification.hidden = !visible;
       faceCameraButton.hidden = !canVerifyFace;
       verifyButton.hidden = !canVerifyFace;
-      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera xác thực';
+      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera để thấy khuôn mặt';
       faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'door_opened'].includes(currentStatus);
       verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'door_opened'].includes(currentStatus);
+    }
+
+    function updateWorkflow() {
+      const activeStep = currentStatus === 'door_opened' ? 0 : cccdSaved ? 3 : mrzReady ? 2 : 1;
+      workflowSteps.forEach((step, index) => {
+        const number = index + 1;
+        const complete = currentStatus === 'door_opened' || number < activeStep;
+        const current = number === activeStep;
+        step.classList.toggle('complete', complete);
+        step.classList.toggle('current', current);
+        if (current) step.setAttribute('aria-current', 'step');
+        else step.removeAttribute('aria-current');
+      });
+      if (cccdSaved) {
+        scanTitle.textContent = 'Quét CCCD tiếp theo';
+        scanHelp.textContent = 'Thẻ vừa quét đã được lưu. Bước xác thực khuôn mặt nằm trong khung kết quả bên phải.';
+      } else if (mrzReady) {
+        scanTitle.textContent = 'Bước 2 · Quét CCCD qua NFC';
+        scanHelp.textContent = 'Đặt đúng thẻ vừa lấy mã MRZ lên đầu đọc rồi bấm nút quét và lưu.';
+      } else {
+        scanTitle.textContent = 'Bước 1 · Lấy mã MRZ';
+        scanHelp.textContent = 'Mã MRZ có 24 ký tự ở mặt sau thẻ. Nhập tay, bật camera Pi để đọc hoặc chọn ảnh.';
+      }
     }
 
     function setStatus(state) {
@@ -215,8 +274,9 @@
       statusText.textContent = state.message || '';
       startButton.disabled = scanBusy || state.status === 'camera_scanning';
       photoButton.disabled = scanBusy || state.status === 'camera_scanning';
+      keyInput.disabled = scanBusy;
       cameraButton.disabled = scanBusy || (state.status === 'authenticating' && !cameraActive);
-      cameraButton.textContent = cameraActive ? 'Dừng camera' : 'Bật camera Pi';
+      cameraButton.textContent = cameraActive ? 'Dừng camera đọc MRZ' : 'Bật camera Pi để đọc mã MRZ';
       if (state.progress) {
         progress.hidden = false;
         progressBar.style.width = `${state.progress.percent}%`;
@@ -230,7 +290,20 @@
         emptyState.style.display = 'grid';
       }
       updateFaceControls();
+      updateWorkflow();
     }
+
+    keyInput.addEventListener('input', () => {
+      if (cccdSaved && keyInput.value.trim()) {
+        cccdSaved = false;
+        canVerifyFace = false;
+        result.style.display = 'none';
+        emptyState.style.display = 'grid';
+        updateFaceControls();
+      }
+      mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value.replace(/\s/g, '').toUpperCase());
+      updateWorkflow();
+    });
 
     function addField(label, value, wide = false, name = false) {
       const box = document.createElement('div');
@@ -247,6 +320,7 @@
 
     function showResult(state) {
       const data = state.data;
+      cccdSaved = true;
       canVerifyFace = state.can_verify_face !== false;
       document.getElementById('fields').replaceChildren();
       addField('Họ và tên', data.full_name, true, true);
@@ -278,6 +352,7 @@
       emptyState.style.display = 'none';
       result.style.display = 'block';
       updateFaceControls();
+      updateWorkflow();
     }
 
     async function pollStatus() {
@@ -307,12 +382,21 @@
       }
       const mrzKey = keyInput.value.replace(/\s/g, '').toUpperCase();
       if (!/^[0-9A-Z<]{24}$/.test(mrzKey)) {
+        mrzReady = false;
+        updateWorkflow();
         setStatus({ status: 'error', message: 'MRZ key info cần đúng 24 ký tự.' });
         keyInput.focus();
         return;
       }
+      mrzReady = true;
+      cccdSaved = false;
+      canVerifyFace = false;
+      result.style.display = 'none';
+      emptyState.style.display = 'grid';
+      updateFaceControls();
+      updateWorkflow();
       startButton.disabled = true;
-      setStatus({ status: 'waiting_for_card', message: 'Đang khởi động đầu đọc…' });
+      setStatus({ status: 'waiting_for_card', message: 'Bước 2: Đặt CCCD lên đầu đọc NFC, Pi đang chờ thẻ…' });
       try {
         const response = await fetch('/api/scan', {
           method: 'POST',
@@ -320,9 +404,10 @@
           cache: 'no-store',
           body: JSON.stringify({ mrz_key_info: mrzKey })
         });
-        keyInput.value = '';
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không bắt đầu được lượt quét.');
+        keyInput.value = '';
+        updateWorkflow();
         await pollStatus();
       } catch (error) {
         setStatus({ status: 'error', message: error.message });
@@ -344,7 +429,13 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không đọc được MRZ từ ảnh.');
+        cccdSaved = false;
+        canVerifyFace = false;
+        result.style.display = 'none';
+        emptyState.style.display = 'grid';
         keyInput.value = payload.mrz_key_info;
+        mrzReady = true;
+        updateWorkflow();
         setStatus({ status: 'idle', message: payload.message });
         keyInput.focus();
       } catch (error) {
@@ -364,7 +455,7 @@
         return;
       }
       cameraButton.disabled = true;
-      setStatus({ status: 'authenticating', message: 'Đang bật camera Pi…' });
+        setStatus({ status: 'authenticating', message: 'Bước 1: Đưa mặt sau CCCD vào camera để đọc MRZ…' });
       try {
         const response = await fetch('/api/camera/start', { method: 'POST', cache: 'no-store' });
         const payload = await response.json();
@@ -406,7 +497,13 @@
         const state = await response.json();
         if (state.status === 'camera_done') {
           cameraActive = false;
+          cccdSaved = false;
+          canVerifyFace = false;
+          result.style.display = 'none';
+          emptyState.style.display = 'grid';
           keyInput.value = state.mrz_key_info || '';
+          mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value);
+          updateWorkflow();
           clearCameraPreview();
           setStatus({ status: 'idle', message: state.message });
           keyInput.focus();
@@ -473,7 +570,8 @@
         }
         faceCameraReady = Boolean(state.frame_ready);
         if (faceCameraReady) {
-          statusText.textContent = 'Camera đã sẵn sàng. Nhìn thẳng vào camera rồi bấm “Xác thực và mở cửa”.';
+          statusText.textContent = 'Camera đã sẵn sàng. Nhìn thẳng vào camera rồi bấm “So khớp và mở cửa”.';
+          verificationHint.textContent = 'Camera đang hoạt động. Nhìn thẳng vào khung hình rồi bấm “So khớp và mở cửa”.';
           updateFaceControls();
         }
       } catch (_) {
@@ -517,6 +615,9 @@
     document.getElementById('clearButton').addEventListener('click', async () => {
       if (faceCameraActive) await stopFaceCamera();
       await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      cccdSaved = false;
+      mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value);
+      canVerifyFace = false;
       setStatus({ status: 'idle', message: 'Đã xóa thông tin khỏi trang.' });
     });
 
