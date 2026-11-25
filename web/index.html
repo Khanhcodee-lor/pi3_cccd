@@ -109,6 +109,8 @@
     .history-table th { background: #f5faf8; color: var(--muted); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
     .history-table tbody tr:last-child td { border-bottom: 0; }
     .history-name { color: var(--ink); font-weight: 700; }
+    .history-thumb { display: block; width: 42px; height: 54px; border-radius: 7px; object-fit: cover; background: #edf3f1; }
+    .history-thumb-empty { display: grid; width: 62px; min-height: 42px; place-items: center; border-radius: 7px; background: #f1f5f3; color: var(--muted); font-size: .68rem; white-space: normal; text-align: center; }
     .history-more { display: block; margin: 12px auto 0; }
     .history-more[hidden] { display: none; }
     .photo-wrap { width: 100%; aspect-ratio: 3 / 4; overflow: hidden; display: grid; place-items: center; border-radius: 12px; background: #edf3f1; color: var(--muted); text-align: center; font-size: .78rem; }
@@ -154,7 +156,7 @@
       </div>
       <div class="step" id="flowStep2">
         <span class="step-number">2</span>
-        <div><strong>Đọc chip NFC</strong><p>Đặt thẻ lên đầu đọc, bấm quét để lấy thông tin và lưu vào Firestore.</p></div>
+        <div><strong>Đọc chip NFC</strong><p>Đặt thẻ lên đầu đọc, bấm quét để lấy thông tin và lưu dữ liệu, ảnh lên Firebase.</p></div>
       </div>
       <div class="step" id="flowStep3">
         <span class="step-number">3</span>
@@ -187,7 +189,7 @@
           <span class="dot"></span>
           <div><span id="statusText">Bước 1: lấy mã MRZ 24 ký tự, sau đó đặt thẻ lên đầu đọc NFC.</span><div class="progress" id="progress" hidden><span id="progressBar"></span></div></div>
         </div>
-        <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Firestore chỉ nhận các trường văn bản; ảnh chân dung CCCD và webcam được xử lý trên Pi. Cần camera và relay GPIO đã cấu hình.</p>
+        <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Thông tin chữ nằm trong Firestore; ảnh DG2 nằm trong Firebase Storage riêng tư. Ảnh webcam chỉ được xử lý trên Pi, không lưu lại.</p>
       </section>
 
       <section class="panel result-panel" aria-live="polite">
@@ -215,7 +217,7 @@
 
     <section class="panel history-panel" aria-labelledby="historyTitle">
       <div class="history-head">
-        <div><h2 id="historyTitle">CCCD đã lưu trên Firebase</h2><p>Mỗi CCCD hiện một dòng, kèm thời điểm lưu gần nhất.</p></div>
+        <div><h2 id="historyTitle">CCCD đã lưu trên Firebase</h2><p>Mỗi CCCD hiện một dòng, kèm ảnh và thời điểm lưu gần nhất. Thẻ cũ cần quét lại để tải ảnh lên.</p></div>
         <button type="button" id="historyToggle" aria-expanded="false">Xem danh sách</button>
       </div>
       <div class="history-content" id="historyContent" hidden>
@@ -227,7 +229,7 @@
         <p class="history-status" id="historyStatus" role="status" aria-live="polite">Đang chờ tải danh sách.</p>
         <div class="history-table-wrap">
           <table class="history-table">
-            <thead><tr><th>Họ và tên</th><th>Số giấy tờ</th><th>Ngày sinh</th><th>Ngày hết hạn</th><th>Lưu gần nhất</th></tr></thead>
+            <thead><tr><th>Ảnh chân dung</th><th>Họ và tên</th><th>Số giấy tờ</th><th>Ngày sinh</th><th>Ngày hết hạn</th><th>Lưu gần nhất</th></tr></thead>
             <tbody id="historyRows"></tbody>
           </table>
         </div>
@@ -340,6 +342,27 @@
         const row = document.createElement('tr');
         row.dataset.historyRow = 'true';
         row.dataset.search = `${item.full_name || ''} ${item.document_number || ''}`;
+        const photoCell = document.createElement('td');
+        if (item.photo_id) {
+          const image = document.createElement('img');
+          image.className = 'history-thumb';
+          image.alt = 'Ảnh chân dung trong CCCD';
+          image.loading = 'lazy';
+          image.src = `/api/history/photo/${encodeURIComponent(item.photo_id)}`;
+          image.onerror = () => {
+            const fallback = document.createElement('span');
+            fallback.className = 'history-thumb-empty';
+            fallback.textContent = 'Không tải được ảnh';
+            photoCell.replaceChildren(fallback);
+          };
+          photoCell.append(image);
+        } else {
+          const fallback = document.createElement('span');
+          fallback.className = 'history-thumb-empty';
+          fallback.textContent = 'Chưa lưu ảnh';
+          photoCell.append(fallback);
+        }
+        row.append(photoCell);
         const values = [
           item.full_name,
           item.document_number,
@@ -490,7 +513,7 @@
       addField('Nơi cấp', data.issuing_country);
       document.getElementById('rawMrz').textContent = data.mrz || (state.mrz_lines || []).join('\n');
       verificationHint.textContent = canVerifyFace
-        ? `Đã lưu dữ liệu CCCD lên Firebase${state.record_id ? ` (mã ${state.record_id.slice(0, 12)})` : ''}. Bật camera, nhìn thẳng vào camera rồi xác thực.`
+        ? `Đã lưu dữ liệu CCCD lên Firebase${state.photo_in_firebase ? ' cùng ảnh chân dung' : '; ảnh chân dung chưa được lưu lên Firebase'}. Bật camera, nhìn thẳng vào camera rồi xác thực.`
         : 'Đã lưu dữ liệu CCCD lên Firebase nhưng không đọc được ảnh chân dung DG2 nên chưa thể xác thực khuôn mặt.';
 
       const photoWrap = document.getElementById('photoWrap');

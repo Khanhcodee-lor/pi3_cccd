@@ -111,17 +111,31 @@ class ScanManager:
             from .firebase_store import save_cccd
 
             record_id = save_cccd(result.fields)
+            photo_in_firebase = False
+            photo_message = ""
+            if result.photo_path is not None:
+                try:
+                    from .firebase_store import save_cccd_photo
+
+                    save_cccd_photo(record_id, result.photo_path)
+                    photo_in_firebase = True
+                    photo_message = " Đã lưu cả ảnh chân dung lên Firebase Storage."
+                except Exception as exc:
+                    photo_message = f" Ảnh chân dung chưa được lưu lên Firebase: {exc}"
+            else:
+                photo_message = " Không trích xuất được ảnh DG2, chỉ lưu dữ liệu chữ."
             with self._lock:
                 self._photo_path = result.photo_path
                 self._record_id = record_id
                 self._scan_finished_at = time.monotonic()
                 self._state = {
                     "status": "done",
-                    "message": "Đọc CCCD thành công và đã lưu dữ liệu lên Firebase.",
+                    "message": "Đọc CCCD thành công và đã lưu dữ liệu lên Firebase." + photo_message,
                     "progress": None,
                     "data": result.fields,
                     "mrz_lines": result.mrz_lines,
                     "record_id": record_id,
+                    "photo_in_firebase": photo_in_firebase,
                     "can_verify_face": result.photo_path is not None,
                 }
         except Exception as exc:
@@ -240,6 +254,20 @@ class WebHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": str(exc)})
             except Exception as exc:
                 self._send_json(503, {"error": f"Không tải được lịch sử Firestore: {exc}"})
+        elif path.startswith("/api/history/photo/"):
+            record_id = path.removeprefix("/api/history/photo/")
+            try:
+                from .firebase_store import get_cccd_photo
+
+                photo = get_cccd_photo(record_id)
+                if photo is None:
+                    self._send(404, b"No photo", "text/plain; charset=utf-8")
+                else:
+                    self._send(200, photo[0], photo[1])
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._send_json(503, {"error": f"Không tải được ảnh CCCD: {exc}"})
         elif path == "/api/photo":
             photo = self.server.scan_manager.photo()
             if photo is None:

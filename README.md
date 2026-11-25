@@ -47,13 +47,14 @@ Sau khi service được cài, workflow triển khai sẽ tự khởi động l�
 
 ## Lưu CCCD lên Firebase và xác thực để mở cửa
 
-Sau khi quét NFC thành công, server lưu các trường họ tên, số giấy tờ, giới tính, ngày sinh, quốc tịch, ngày hết hạn và loại giấy tờ vào **Cloud Firestore**. MRZ thô và ảnh chân dung không được tải lên Firebase. Ảnh DG2 được giữ cục bộ trong `output/` để hiển thị và đối chiếu khuôn mặt.
+Sau khi quét NFC thành công, server lưu các trường họ tên, số giấy tờ, giới tính, ngày sinh, quốc tịch, ngày hết hạn và loại giấy tờ vào **Cloud Firestore**; ảnh chân dung DG2 được tải lên **Cloud Storage for Firebase**. Firestore chỉ lưu đường dẫn nội bộ tới ảnh, không tạo URL công khai. MRZ thô không được tải lên Firebase. Ảnh vẫn được giữ cục bộ trong `output/` để đối chiếu khuôn mặt.
 
 ### Cấu hình Firebase
 
 1. Tạo project Firebase và bật Cloud Firestore.
-2. Tạo service account cho Firebase Admin SDK, tải JSON key về Pi và giữ file này ngoài Git.
-3. Cài thư viện trong virtualenv và tải hai model OpenCV Zoo (khoảng 37 MB):
+2. Trong Firebase Console, vào **Databases & Storage → Storage → Get started** để tạo bucket. Cloud Storage for Firebase hiện yêu cầu gói Blaze pay-as-you-go; mức dùng vượt phần miễn phí có thể bị tính phí. Xem [yêu cầu gói và bucket](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024?hl=vi).
+3. Tạo service account cho Firebase Admin SDK, tải JSON key về Pi và giữ file này ngoài Git. Service account cần quyền đọc/ghi/xóa object trong bucket, ví dụ vai trò **Storage Object Admin**.
+4. Cài thư viện trong virtualenv và tải hai model OpenCV Zoo (khoảng 37 MB):
 
 ```bash
 cd ~/p3_cccd
@@ -61,11 +62,12 @@ cd ~/p3_cccd
 .venv/bin/python -m cccd_reader.download_face_models
 ```
 
-4. Thêm cấu hình vào `~/.config/p3_cccd/web.env`, đặt quyền file chỉ cho user Pi đọc:
+5. Thêm cấu hình vào `~/.config/p3_cccd/web.env`, đặt quyền file chỉ cho user Pi đọc:
 
 ```text
 FIREBASE_SERVICE_ACCOUNT=/home/khanh/.config/p3_cccd/firebase-service-account.json
 FIREBASE_PROJECT_ID=ten-project-firebase
+FIREBASE_STORAGE_BUCKET=ten-project-firebase.firebasestorage.app
 FIRESTORE_COLLECTION=cccd_cards
 CCCD_FACE_THRESHOLD=0.363
 CCCD_DOOR_GPIO_PIN=17
@@ -73,7 +75,7 @@ CCCD_DOOR_RELAY_ACTIVE_HIGH=false
 CCCD_DOOR_UNLOCK_SECONDS=3
 ```
 
-`FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Chân relay dùng số BCM; ví dụ `17` là GPIO17. Giá trị mặc định `ACTIVE_HIGH=false` dành cho relay kích mức thấp. Đấu khóa qua module relay phù hợp, không nối tải khóa trực tiếp vào GPIO. Nếu relay của bạn kích mức cao, đổi thành `true`.
+`FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Điền đúng tên bucket đang hiện trong Firebase Console, không ghi tiền tố `gs://`; bucket cũ có thể kết thúc bằng `.appspot.com`. Giữ bucket ở chế độ riêng tư; web Pi tải ảnh qua API dùng cùng cơ chế đăng nhập của trang. Nếu chưa đặt bucket, dữ liệu chữ vẫn lưu được và ảnh vẫn dùng được trên Pi để xác thực, nhưng ảnh sẽ chưa xuất hiện trong lịch sử Firebase. Chân relay dùng số BCM; ví dụ `17` là GPIO17. Giá trị mặc định `ACTIVE_HIGH=false` dành cho relay kích mức thấp. Đấu khóa qua module relay phù hợp, không nối tải khóa trực tiếp vào GPIO. Nếu relay của bạn kích mức cao, đổi thành `true`.
 
 Ngưỡng `0.363` là điểm bắt đầu theo demo SFace của OpenCV Zoo; cần hiệu chỉnh bằng camera thực tế và dữ liệu có sự đồng ý trước khi dùng. Ngưỡng cao hơn chặt hơn nhưng có thể từ chối đúng người. Sau khi cấu hình, khởi động lại service:
 
