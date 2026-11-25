@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test Live Stream & Nhận diện khuôn mặt với Raspberry Pi Camera v2.
+Test Live Stream & Nhận diện khuôn mặt với Raspberry Pi Camera v2.1 NoIR (Mạch đen).
 Xem trực tiếp qua trình duyệt web tại http://<IP_CỦA_PI>:8080
 """
 
@@ -9,11 +9,13 @@ import os
 import sys
 import time
 import socket
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from threading import Thread, Lock
 import cv2
+import numpy as np
 
 try:
     from picamera2 import Picamera2
@@ -70,8 +72,10 @@ class StreamBuffer:
     def __init__(self):
         self.frame: bytes | None = None
         self.swap_rb: bool = True  # Mặc định đảo kênh R-B vì Picamera2 xuất RGB, OpenCV cần BGR
-        self.contrast: float = 1.25  # Tăng tương phản để hình ảnh trong trẻo, không bị mù sương
-        self.sharpness: float = 1.6 # Tăng độ nét chi tiết
+        self.red_gain: float = 0.85 # Tinh chỉnh hạ đỏ cho NoIR
+        self.blue_gain: float = 1.05
+        self.awb_mode: int = 0
+        self.awb_changed: bool = False
         self.lock = Lock()
 
     def set_frame(self, frame_bytes: bytes):
@@ -87,9 +91,24 @@ class StreamBuffer:
             self.swap_rb = not self.swap_rb
             return self.swap_rb
 
-    def should_swap_rb(self) -> bool:
+    def set_color_tuning(self, red_gain: float | None = None, awb_mode: int | None = None):
         with self.lock:
-            return self.swap_rb
+            if red_gain is not None:
+                self.red_gain = max(0.3, min(1.6, red_gain))
+            if awb_mode is not None:
+                self.awb_mode = awb_mode
+                self.awb_changed = True
+
+    def get_color_settings(self) -> tuple[bool, float, float, int]:
+        with self.lock:
+            return self.swap_rb, self.red_gain, self.blue_gain, self.awb_mode
+
+    def pop_awb_change(self) -> int | None:
+        with self.lock:
+            if self.awb_changed:
+                self.awb_changed = False
+                return self.awb_mode
+            return None
 
 buffer = StreamBuffer()
 
@@ -97,7 +116,7 @@ HTML_PAGE = """<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="utf-8">
-    <title>Pi Cam v2 - Nhận Diện Khuôn Mặt</title>
+    <title>Pi Cam v2.1 NoIR - Live Stream</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { box-sizing: border-box; }
@@ -109,7 +128,7 @@ HTML_PAGE = """<!DOCTYPE html>
             margin: 0;
             padding: 16px;
         }
-        h2 { margin: 10px 0; color: #4CAF50; font-size: 22px; }
+        h2 { margin: 8px 0; color: #4CAF50; font-size: 22px; }
         .stream-container {
             position: relative;
             display: inline-block;
@@ -129,22 +148,51 @@ HTML_PAGE = """<!DOCTYPE html>
             background: #000;
         }
         .controls {
-            margin: 14px 0;
+            margin: 16px auto;
+            max-width: 640px;
+            background: #1e1e1e;
+            padding: 14px 18px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        select, input[type=range] {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        input[type=range] {
+            cursor: pointer;
+            width: 120px;
         }
         .btn {
             background: #333;
             color: #fff;
             border: 1px solid #555;
-            padding: 8px 16px;
-            border-radius: 20px;
+            padding: 6px 14px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s;
         }
         .btn:hover { background: #4CAF50; border-color: #4CAF50; }
         .status-bar {
             font-size: 14px;
             color: #aaa;
+            margin-top: 10px;
         }
         .badge {
             display: inline-block;
@@ -154,24 +202,63 @@ HTML_PAGE = """<!DOCTYPE html>
             border-radius: 20px;
             font-weight: bold;
             font-size: 12px;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+        }
+        .info-noir {
+            background: #291800;
+            color: #ffb74d;
+            border: 1px solid #ff9800;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            max-width: 640px;
+            margin: 10px auto;
+            text-align: left;
         }
     </style>
 </head>
 <body>
     <span class="badge">LIVE STREAM</span>
-    <h2>Raspberry Pi Camera v2</h2>
+    <h2>Raspberry Pi Camera v2.1 (NoIR)</h2>
     <div class="stream-container">
         <img id="cameraView" alt="Đang tải video..." src="/frame.jpg" />
     </div>
-    <div class="controls">
-        <button class="btn" onclick="toggleColor()">🔄 Đổi kênh màu (Fix màu da)</button>
+
+    <div class="info-noir">
+        💡 <b>Cam NoIR (Mạch đen)</b> không có kính lọc hồng ngoại để nhìn đêm. Đèn phòng phát ra tia hồng ngoại khiến camera bị đỏ. Bạn dùng thanh trượt dưới đây để hạ sắc đỏ hoặc chọn Cân bằng trắng phù hợp.
     </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>Cân bằng trắng (AWB):</label>
+            <select id="awbSelect" onchange="updateSettings()">
+                <option value="0" selected>Tự động (Auto NoIR)</option>
+                <option value="3">Đèn huỳnh quang (Fluorescent)</option>
+                <option value="5">Ánh sáng ngày (Daylight)</option>
+                <option value="4">Trong nhà (Indoor)</option>
+                <option value="1">Đèn sợi đốt (Tungsten)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Sắc Đỏ:</label>
+            <input type="range" id="redSlider" min="40" max="130" value="85" oninput="updateSettings()">
+            <span id="redVal">85%</span>
+        </div>
+
+        <button class="btn" onclick="toggleColor()">🔄 Đổi kênh R/B</button>
+        <button class="btn" onclick="presetAntiRed()">✨ Khử đỏ nhanh</button>
+    </div>
+
     <div class="status-bar" id="statusText">Đang kết nối camera...</div>
 
     <script>
         const img = document.getElementById('cameraView');
         const status = document.getElementById('statusText');
+        const redSlider = document.getElementById('redSlider');
+        const redVal = document.getElementById('redVal');
+        const awbSelect = document.getElementById('awbSelect');
+
         let busy = false;
         let lastFrameUrl = null;
         let frameCount = 0;
@@ -210,6 +297,22 @@ HTML_PAGE = """<!DOCTYPE html>
             }
         }
 
+        async function updateSettings() {
+            const redGain = redSlider.value / 100.0;
+            redVal.textContent = redSlider.value + '%';
+            const awbMode = awbSelect.value;
+            try {
+                await fetch('/set-color?red=' + redGain + '&awb=' + awbMode, { method: 'POST' });
+            } catch(e) {}
+        }
+
+        async function presetAntiRed() {
+            redSlider.value = 75;
+            redVal.textContent = '75%';
+            awbSelect.value = '3';
+            updateSettings();
+        }
+
         async function toggleColor() {
             try {
                 const res = await fetch('/toggle-color', { method: 'POST' });
@@ -231,7 +334,8 @@ class WebStreamHandler(BaseHTTPRequestHandler):
         pass
 
     def do_POST(self):
-        if self.path == '/toggle-color':
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == '/toggle-color':
             is_swapped = buffer.toggle_color()
             resp = ('{"status": "ok", "swap_rb": %s}' % ('true' if is_swapped else 'false')).encode('utf-8')
             self.send_response(200)
@@ -239,6 +343,17 @@ class WebStreamHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', str(len(resp)))
             self.end_headers()
             self.wfile.write(resp)
+
+        elif parsed.path == '/set-color':
+            query = urllib.parse.parse_qs(parsed.query)
+            red_val = float(query['red'][0]) if 'red' in query else None
+            awb_val = int(query['awb'][0]) if 'awb' in query else None
+            buffer.set_color_tuning(red_gain=red_val, awb_mode=awb_val)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', '15')
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
         else:
             self.send_error(404)
 
@@ -301,12 +416,19 @@ def run_camera():
 
     if HAS_PICAMERA2:
         try:
-            picam2 = Picamera2()
+            # Ưu tiên nạp file tuning chuẩn dành riêng cho camera NoIR (mạch đen)
+            tuning_noir = "/usr/share/libcamera/ipa/rpi/vc4/imx219_noir.json"
+            if os.path.isfile(tuning_noir):
+                print(f"[+] Phát hiện camera NoIR, nạp file tuning tối ưu: {tuning_noir}")
+                picam2 = Picamera2(tuning=tuning_noir)
+            else:
+                picam2 = Picamera2()
+
             config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
             picam2.configure(config)
             picam2.start()
 
-            # Tinh chỉnh ISP phần cứng của Raspberry Pi để hình ảnh trong, sắc nét và tươi sáng hơn
+            # Tinh chỉnh ISP phần cứng
             try:
                 controls = {}
                 if "Contrast" in picam2.camera_controls:
@@ -322,7 +444,7 @@ def run_camera():
                 print(f"[-] Không thể set camera controls: {e}")
 
             use_picam2 = True
-            print("[+] Đang dùng Picamera2 chuẩn libcamera")
+            print("[+] Đang dùng Picamera2 chuẩn libcamera NoIR")
         except Exception as e:
             print(f"[-] Picamera2 không khả dụng ({e}), thử VideoCapture...")
 
@@ -338,7 +460,12 @@ def run_camera():
     while True:
         try:
             if use_picam2:
-                # Picamera2 trả về mảng RGB
+                new_awb = buffer.pop_awb_change()
+                if new_awb is not None:
+                    try:
+                        picam2.set_controls({"AwbMode": new_awb})
+                    except Exception:
+                        pass
                 frame_raw = picam2.capture_array()
             else:
                 ret, frame_raw = cap.read()
@@ -346,12 +473,20 @@ def run_camera():
                     time.sleep(0.05)
                     continue
 
+            swap_rb, red_gain, blue_gain, _ = buffer.get_color_settings()
+
             # Đổi kênh màu R/B nếu cần (OpenCV imencode cần BGR)
-            if buffer.should_swap_rb():
-                # Lật kênh Red và Blue để da người trở về màu tự nhiên
+            if swap_rb:
                 frame_bgr = frame_raw[:, :, ::-1].copy()
             else:
                 frame_bgr = frame_raw.copy()
+
+            # Tinh chỉnh cân bằng màu (Khử ám đỏ cho NoIR):
+            if red_gain != 1.0 or blue_gain != 1.0:
+                if red_gain != 1.0:
+                    frame_bgr[:, :, 2] = np.clip(frame_bgr[:, :, 2].astype(np.float32) * red_gain, 0, 255).astype(np.uint8)
+                if blue_gain != 1.0:
+                    frame_bgr[:, :, 0] = np.clip(frame_bgr[:, :, 0].astype(np.float32) * blue_gain, 0, 255).astype(np.uint8)
 
             # Nhận diện khuôn mặt nếu có mô hình
             face_count = 0
@@ -394,7 +529,7 @@ def run_camera():
                 2
             )
 
-            # Nén ảnh JPEG chất lượng cao hơn (85 thay vì 75 để ảnh trong và mịn, không vỡ hạt)
+            # Nén ảnh JPEG chất lượng cao
             ret, jpeg = cv2.imencode('.jpg', frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
             if ret:
                 buffer.set_frame(jpeg.tobytes())
@@ -408,7 +543,7 @@ def main():
     port = 8080
 
     print("=" * 60)
-    print("      RASPBERRY PI CAM V2 - LIVE FACE DETECTION STREAM      ")
+    print("   RASPBERRY PI CAM V2.1 (NOIR) - LIVE FACE DETECTION STREAM   ")
     print("=" * 60)
     print(f"[>] Mở trình duyệt trên máy tính/điện thoại và truy cập:")
     print(f"    👉 http://{ip}:{port}")
