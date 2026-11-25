@@ -53,6 +53,10 @@
     }
     input:focus { outline: 3px solid rgba(18, 106, 91, .15); border-color: var(--green); }
     .hint { margin: 8px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+    .mrz-ready { display: flex; gap: 10px; margin-top: 16px; padding: 12px; border: 1px solid #b6d9cd; border-radius: 10px; background: var(--mint); color: var(--green-dark); font-size: .83rem; line-height: 1.45; }
+    .mrz-ready[hidden] { display: none; }
+    .mrz-ready-mark { flex: none; font-weight: 900; }
+    .mrz-ready strong { display: block; margin-bottom: 2px; color: var(--ink); }
     .photo-button { width: 100%; min-height: 44px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--line); background: #f5faf8; color: var(--green-dark); }
     .photo-button:hover:not(:disabled) { background: var(--mint); }
     .camera-button { width: 100%; min-height: 48px; margin-top: 14px; padding: 12px 18px; background: var(--green); color: #fff; }
@@ -127,15 +131,15 @@
     <nav class="steps" aria-label="Các bước mở cửa">
       <div class="step current" id="flowStep1" aria-current="step">
         <span class="step-number">1</span>
-        <div><strong>Lấy mã MRZ</strong><p>Nhập 24 ký tự, bật camera Pi hoặc chọn ảnh mặt sau CCCD.</p></div>
+        <div><strong>Đọc mã MRZ</strong><p>Bấm “Quét mã MRZ”, đưa mặt sau CCCD vào camera Pi. Mã sẽ tự điền.</p></div>
       </div>
       <div class="step" id="flowStep2">
         <span class="step-number">2</span>
-        <div><strong>Quét CCCD và lưu dữ liệu</strong><p>Đặt thẻ lên đầu đọc NFC rồi bấm quét. Dữ liệu được lưu vào Firestore.</p></div>
+        <div><strong>Đọc chip NFC</strong><p>Đặt thẻ lên đầu đọc, bấm quét để lấy thông tin và lưu vào Firestore.</p></div>
       </div>
       <div class="step" id="flowStep3">
         <span class="step-number">3</span>
-        <div><strong>Xác thực khuôn mặt</strong><p>Sau khi lưu thành công, bật camera xác thực. Nếu khớp ảnh trên thẻ, relay mở cửa.</p></div>
+        <div><strong>So khuôn mặt, mở cửa</strong><p>Sau khi lưu xong, bật camera xác thực rồi bấm so khớp.</p></div>
       </div>
     </nav>
 
@@ -147,14 +151,18 @@
           <label for="mrzKey">Mã MRZ · 24 ký tự</label>
           <input id="mrzKey" name="mrz_key_info" type="text" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••" required>
           <p class="hint">Mã gồm số giấy tờ, ngày sinh, ngày hết hạn và ký tự kiểm tra. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
-          <button class="camera-button" id="cameraButton" type="button">Bật camera Pi để đọc mã MRZ</button>
+          <button class="camera-button" id="cameraButton" type="button">Quét mã MRZ bằng camera Pi</button>
           <div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ webcam Pi"></div>
-          <p class="hint">Đưa mặt sau CCCD vào khung hình để camera đọc mã. Giữ thẻ ngang, đủ sáng và không dí sát ống kính.</p>
+          <p class="hint">Dùng camera nối với Raspberry Pi. Đưa mặt sau CCCD vào khung hình; bước này chỉ đọc mã MRZ, chưa xác thực khuôn mặt. Camera tự dừng khi đọc xong.</p>
           <label class="visually-hidden" for="mrzPhoto">Chọn ảnh mặt sau CCCD</label>
           <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
-          <button class="photo-button" id="photoButton" type="button">Hoặc chọn ảnh mặt sau CCCD</button>
+          <button class="photo-button" id="photoButton" type="button">Đọc mã MRZ từ ảnh mặt sau</button>
           <p class="hint">Khi đã có mã MRZ, đặt CCCD lên đầu đọc NFC rồi chuyển sang bước 2.</p>
-          <button class="primary" id="startButton" type="submit">Bước 2 · Quét CCCD và lưu Firebase</button>
+          <div class="mrz-ready" id="mrzReadyHint" hidden>
+            <span class="mrz-ready-mark" aria-hidden="true">✓</span>
+            <span><strong>Đã có mã MRZ</strong>Đặt CCCD lên đầu đọc NFC rồi bấm nút bên dưới để đọc chip và lưu dữ liệu.</span>
+          </div>
+          <button class="primary" id="startButton" type="submit" disabled>Nhập mã MRZ để tiếp tục</button>
         </form>
         <div class="status" id="status" role="status" aria-live="polite">
           <span class="dot"></span>
@@ -203,6 +211,7 @@
     const result = document.getElementById('result');
     const scanTitle = document.getElementById('scan-title');
     const scanHelp = document.getElementById('scan-help');
+    const mrzReadyHint = document.getElementById('mrzReadyHint');
     const workflowSteps = [
       document.getElementById('flowStep1'),
       document.getElementById('flowStep2'),
@@ -259,8 +268,11 @@
         scanHelp.textContent = 'Đặt đúng thẻ vừa lấy mã MRZ lên đầu đọc rồi bấm nút quét và lưu.';
       } else {
         scanTitle.textContent = 'Bước 1 · Lấy mã MRZ';
-        scanHelp.textContent = 'Mã MRZ có 24 ký tự ở mặt sau thẻ. Nhập tay, bật camera Pi để đọc hoặc chọn ảnh.';
+        scanHelp.textContent = 'Bấm “Quét mã MRZ”, đưa mặt sau thẻ vào camera Pi; mã 24 ký tự sẽ tự điền. Có thể nhập tay hoặc chọn ảnh.';
       }
+      mrzReadyHint.hidden = !mrzReady || cccdSaved;
+      startButton.disabled = !mrzReady || ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(currentStatus) || currentStatus === 'camera_scanning';
+      startButton.textContent = mrzReady ? 'Bước 2 · Quét chip CCCD và lưu Firebase' : 'Nhập mã MRZ để tiếp tục';
     }
 
     function setStatus(state) {
@@ -272,11 +284,10 @@
       if (state.status === 'done' || state.status === 'camera_done' || state.status === 'door_opened') statusBox.classList.add('success');
       if (['error', 'camera_error', 'face_error', 'face_mismatch'].includes(state.status)) statusBox.classList.add('error');
       statusText.textContent = state.message || '';
-      startButton.disabled = scanBusy || state.status === 'camera_scanning';
       photoButton.disabled = scanBusy || state.status === 'camera_scanning';
       keyInput.disabled = scanBusy;
       cameraButton.disabled = scanBusy || (state.status === 'authenticating' && !cameraActive);
-      cameraButton.textContent = cameraActive ? 'Dừng camera đọc MRZ' : 'Bật camera Pi để đọc mã MRZ';
+      cameraButton.textContent = cameraActive ? 'Dừng quét MRZ' : 'Quét mã MRZ bằng camera Pi';
       if (state.progress) {
         progress.hidden = false;
         progressBar.style.width = `${state.progress.percent}%`;
@@ -436,8 +447,8 @@
         keyInput.value = payload.mrz_key_info;
         mrzReady = true;
         updateWorkflow();
-        setStatus({ status: 'idle', message: payload.message });
-        keyInput.focus();
+        setStatus({ status: 'idle', message: 'Đã đọc mã MRZ. Bước tiếp: đặt CCCD lên đầu đọc NFC rồi bấm “Bước 2”.' });
+        startButton.focus();
       } catch (error) {
         setStatus({ status: 'error', message: error.message });
       } finally {
@@ -455,7 +466,7 @@
         return;
       }
       cameraButton.disabled = true;
-        setStatus({ status: 'authenticating', message: 'Bước 1: Đưa mặt sau CCCD vào camera để đọc MRZ…' });
+      setStatus({ status: 'authenticating', message: 'Đang mở camera Pi. Đưa mặt sau CCCD vào khung hình; mã sẽ tự điền khi được nhận diện.' });
       try {
         const response = await fetch('/api/camera/start', { method: 'POST', cache: 'no-store' });
         const payload = await response.json();
@@ -506,7 +517,7 @@
           updateWorkflow();
           clearCameraPreview();
           setStatus({ status: 'idle', message: state.message });
-          keyInput.focus();
+          startButton.focus();
           return;
         }
         if (state.status === 'camera_error' || state.status === 'camera_stopped') {
