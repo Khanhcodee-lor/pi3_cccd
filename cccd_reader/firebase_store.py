@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
+import re
 import threading
 
 _LOCK = threading.Lock()
@@ -77,3 +78,49 @@ def save_cccd(fields: dict[str, str]) -> str:
 def ensure_firebase_ready() -> None:
     """Fail before reading a card when the SDK or service account is not configured."""
     _firestore_client()
+
+
+def list_cccd_page(cursor: str | None = None, page_size: int = 25) -> dict:
+    """Lấy một trang CCCD đã lưu, mới cập nhật trước; cursor là document ID."""
+    if not 1 <= page_size <= 100:
+        raise ValueError("Số dòng mỗi trang phải nằm trong khoảng 1 đến 100.")
+    if cursor and not re.fullmatch(r"[0-9a-f]{64}", cursor):
+        raise ValueError("Cursor lịch sử không hợp lệ.")
+
+    client, firestore = _firestore_client()
+    collection = os.environ.get("FIRESTORE_COLLECTION", "cccd_cards")
+    collection_ref = client.collection(collection)
+    query = collection_ref.order_by("updated_at", direction=firestore.Query.DESCENDING)
+    if cursor:
+        snapshot = collection_ref.document(cursor).get()
+        if not snapshot.exists:
+            raise ValueError("Không tìm thấy vị trí tiếp theo. Hãy tải lại danh sách.")
+        query = query.start_after(snapshot)
+
+    snapshots = list(query.limit(page_size + 1).stream())
+    has_more = len(snapshots) > page_size
+    page = snapshots[:page_size]
+    fields = (
+        "full_name",
+        "document_number",
+        "sex",
+        "date_of_birth",
+        "nationality",
+        "expiry_date",
+        "document_type",
+        "issuing_country",
+    )
+    records = []
+    for snapshot in page:
+        data = snapshot.to_dict() or {}
+        updated_at = data.get("updated_at")
+        records.append({
+            **{name: data.get(name, "") for name in fields},
+            "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else None,
+        })
+
+    return {
+        "items": records,
+        "has_more": has_more,
+        "next_cursor": page[-1].id if has_more and page else None,
+    }

@@ -14,7 +14,7 @@ import time
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .scanner import ScanResult, scan_card
 from .webcam import WebcamManager
@@ -230,6 +230,16 @@ class WebHandler(BaseHTTPRequestHandler):
             self._send(200, index.read_bytes(), "text/html; charset=utf-8")
         elif path == "/api/status":
             self._send_json(200, self.server.scan_manager.snapshot())
+        elif path == "/api/history":
+            cursor = parse_qs(urlparse(self.path).query).get("cursor", [""])[0] or None
+            try:
+                from .firebase_store import list_cccd_page
+
+                self._send_json(200, list_cccd_page(cursor=cursor))
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
+            except Exception as exc:
+                self._send_json(503, {"error": f"Không tải được lịch sử Firestore: {exc}"})
         elif path == "/api/photo":
             photo = self.server.scan_manager.photo()
             if photo is None:

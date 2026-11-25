@@ -94,6 +94,23 @@
     .verification-actions button { min-height: 44px; padding: 10px 12px; background: #e8f2ef; color: var(--green-dark); }
     .verification-actions .verify { background: var(--green); color: white; }
     .verification-actions .verify:hover:not(:disabled) { background: var(--green-dark); }
+    .history-panel { margin-top: 20px; padding: 20px 22px; }
+    .history-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .history-head h2 { margin: 0 0 4px; font-size: 1rem; }
+    .history-head p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+    .history-head button, .history-toolbar button, .history-more { flex: none; min-height: 40px; padding: 9px 13px; border: 1px solid var(--line); background: #f5faf8; color: var(--green-dark); }
+    .history-content { margin-top: 16px; }
+    .history-toolbar { display: flex; gap: 10px; margin-bottom: 8px; }
+    .history-search { flex: 1; min-width: 0; font: 500 .9rem ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; text-transform: none; }
+    .history-status { min-height: 1.4em; margin: 8px 0; color: var(--muted); font-size: .8rem; }
+    .history-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+    .history-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .82rem; }
+    .history-table th, .history-table td { padding: 11px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    .history-table th { background: #f5faf8; color: var(--muted); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
+    .history-table tbody tr:last-child td { border-bottom: 0; }
+    .history-name { color: var(--ink); font-weight: 700; }
+    .history-more { display: block; margin: 12px auto 0; }
+    .history-more[hidden] { display: none; }
     .photo-wrap { width: 100%; aspect-ratio: 3 / 4; overflow: hidden; display: grid; place-items: center; border-radius: 12px; background: #edf3f1; color: var(--muted); text-align: center; font-size: .78rem; }
     .photo-wrap img { width: 100%; height: 100%; object-fit: cover; }
     .photo-fallback { padding: 12px; }
@@ -111,6 +128,8 @@
       .steps { grid-template-columns: 1fr; gap: 8px; }
       .step { padding: 12px 14px; }
       .layout { grid-template-columns: 1fr; }
+      .history-panel { padding: 16px; }
+      .history-head { align-items: flex-start; flex-direction: column; }
       .empty { min-height: 205px; }
     }
     @media (max-width: 460px) {
@@ -193,6 +212,28 @@
         </div>
       </section>
     </div>
+
+    <section class="panel history-panel" aria-labelledby="historyTitle">
+      <div class="history-head">
+        <div><h2 id="historyTitle">CCCD đã lưu trên Firebase</h2><p>Mỗi CCCD hiện một dòng, kèm thời điểm lưu gần nhất.</p></div>
+        <button type="button" id="historyToggle" aria-expanded="false">Xem danh sách</button>
+      </div>
+      <div class="history-content" id="historyContent" hidden>
+        <div class="history-toolbar">
+          <label class="visually-hidden" for="historySearch">Lọc danh sách CCCD đã tải</label>
+          <input class="history-search" id="historySearch" type="search" placeholder="Lọc tên hoặc số giấy tờ đã tải">
+          <button type="button" id="historyRefresh">Tải lại</button>
+        </div>
+        <p class="history-status" id="historyStatus" role="status" aria-live="polite">Đang chờ tải danh sách.</p>
+        <div class="history-table-wrap">
+          <table class="history-table">
+            <thead><tr><th>Họ và tên</th><th>Số giấy tờ</th><th>Ngày sinh</th><th>Ngày hết hạn</th><th>Lưu gần nhất</th></tr></thead>
+            <tbody id="historyRows"></tbody>
+          </table>
+        </div>
+        <button type="button" class="history-more" id="historyMore" hidden>Tải thêm CCCD</button>
+      </div>
+    </section>
   </main>
   <script>
     const form = document.getElementById('scanForm');
@@ -221,6 +262,13 @@
     const verificationHint = document.getElementById('verificationHint');
     const faceCameraButton = document.getElementById('faceCameraButton');
     const verifyButton = document.getElementById('verifyButton');
+    const historyToggle = document.getElementById('historyToggle');
+    const historyContent = document.getElementById('historyContent');
+    const historyRows = document.getElementById('historyRows');
+    const historyStatus = document.getElementById('historyStatus');
+    const historySearch = document.getElementById('historySearch');
+    const historyRefresh = document.getElementById('historyRefresh');
+    const historyMore = document.getElementById('historyMore');
     let polling = false;
     let cameraActive = false;
     let faceCameraActive = false;
@@ -231,6 +279,11 @@
     let cccdSaved = false;
     let cameraFrameBusy = false;
     let cameraFrameUrl = null;
+    let historyLoaded = false;
+    let historyLoading = false;
+    let historyCursor = null;
+    let historyHasMore = false;
+    let historyCount = 0;
 
     function clearCameraPreview() {
       cameraPreview.hidden = true;
@@ -247,6 +300,98 @@
       faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera để thấy khuôn mặt';
       faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'door_opened'].includes(currentStatus);
       verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'door_opened'].includes(currentStatus);
+    }
+
+    function normalizeHistoryText(value) {
+      return String(value || '').toLocaleLowerCase('vi')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd');
+    }
+
+    function formatHistoryTime(value) {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '—';
+      return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+    }
+
+    function filterHistoryRows() {
+      const query = normalizeHistoryText(historySearch.value.trim());
+      let visibleCount = 0;
+      historyRows.querySelectorAll('tr[data-history-row]').forEach((row) => {
+        const matches = !query || normalizeHistoryText(row.dataset.search).includes(query);
+        row.hidden = !matches;
+        if (matches) visibleCount += 1;
+      });
+      if (query) {
+        historyStatus.textContent = `Tìm thấy ${visibleCount} CCCD trong ${historyCount} CCCD đã tải.`;
+      } else if (!historyCount) {
+        historyStatus.textContent = 'Firebase chưa có CCCD nào được lưu.';
+      } else {
+        historyStatus.textContent = historyHasMore
+          ? `Đã tải ${historyCount} CCCD. Có thể tải thêm các bản ghi cũ hơn.`
+          : `Đã tải hết ${historyCount} CCCD.`;
+      }
+    }
+
+    function appendHistoryRows(items) {
+      items.forEach((item) => {
+        const row = document.createElement('tr');
+        row.dataset.historyRow = 'true';
+        row.dataset.search = `${item.full_name || ''} ${item.document_number || ''}`;
+        const values = [
+          item.full_name,
+          item.document_number,
+          item.date_of_birth,
+          item.expiry_date,
+          formatHistoryTime(item.updated_at)
+        ];
+        values.forEach((value, index) => {
+          const cell = document.createElement('td');
+          cell.textContent = value || '—';
+          if (index === 0) cell.className = 'history-name';
+          row.append(cell);
+        });
+        historyRows.append(row);
+      });
+      historyCount += items.length;
+      filterHistoryRows();
+    }
+
+    async function loadHistory(reset = false) {
+      if (historyLoading) return;
+      historyLoading = true;
+      historyRefresh.disabled = true;
+      historyMore.disabled = true;
+      if (reset) {
+        historyCursor = null;
+        historyHasMore = false;
+        historyCount = 0;
+        historyRows.replaceChildren();
+        historyStatus.textContent = 'Đang tải danh sách từ Firebase…';
+      } else {
+        historyStatus.textContent = 'Đang tải thêm CCCD…';
+      }
+
+      try {
+        const query = historyCursor ? `?cursor=${encodeURIComponent(historyCursor)}` : '';
+        const response = await fetch(`/api/history${query}`, { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không tải được lịch sử CCCD.');
+        appendHistoryRows(Array.isArray(payload.items) ? payload.items : []);
+        historyCursor = payload.next_cursor || null;
+        historyHasMore = Boolean(payload.has_more && historyCursor);
+        historyLoaded = true;
+        historyMore.hidden = !historyHasMore;
+        filterHistoryRows();
+      } catch (error) {
+        historyStatus.textContent = error.message || 'Không kết nối được Firebase.';
+      } finally {
+        historyLoading = false;
+        historyRefresh.disabled = false;
+        historyMore.disabled = false;
+      }
     }
 
     function updateWorkflow() {
@@ -296,6 +441,7 @@
         progressBar.style.width = '25%';
       }
       if (state.data && ['done', 'verifying_face', 'face_error', 'face_mismatch', 'door_opened'].includes(state.status)) showResult(state);
+      if (state.status === 'done' && historyLoaded && !historyContent.hidden) loadHistory(true);
       if (state.status === 'idle') {
         result.style.display = 'none';
         emptyState.style.display = 'grid';
@@ -622,6 +768,17 @@
         fetch('/api/face/camera/stop', { method: 'POST', keepalive: true, cache: 'no-store' }).catch(() => {});
       }
     });
+
+    historyToggle.addEventListener('click', () => {
+      const opening = historyContent.hidden;
+      historyContent.hidden = !opening;
+      historyToggle.setAttribute('aria-expanded', String(opening));
+      historyToggle.textContent = opening ? 'Ẩn danh sách' : 'Xem danh sách';
+      if (opening && !historyLoaded) loadHistory(true);
+    });
+    historyRefresh.addEventListener('click', () => loadHistory(true));
+    historyMore.addEventListener('click', () => loadHistory(false));
+    historySearch.addEventListener('input', filterHistoryRows);
 
     document.getElementById('clearButton').addEventListener('click', async () => {
       if (faceCameraActive) await stopFaceCamera();
