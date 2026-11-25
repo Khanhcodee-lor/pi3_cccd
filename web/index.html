@@ -28,20 +28,20 @@
       color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    main { width: min(720px, calc(100% - 32px)); margin: 0 auto; padding: 44px 0 64px; }
+    main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 44px 0 64px; }
     .eyebrow { color: var(--green); font-size: .76rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
     h1 { margin: 10px 0 9px; font-size: clamp(2rem, 5vw, 3.3rem); letter-spacing: -.045em; line-height: 1.05; }
     .intro { max-width: 660px; margin: 0; color: var(--muted); line-height: 1.65; }
-    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 26px 0 16px; }
-    .flow-step { position: relative; display: flex; align-items: center; gap: 9px; min-width: 0; padding: 10px; border-radius: 11px; background: #eaf1ef; color: var(--muted); }
-    .flow-step > span { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; background: #d6e2de; color: #526963; font-size: .8rem; font-weight: 800; }
-    .flow-step div { min-width: 0; }
-    .flow-step small, .flow-step strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .flow-step small { font-size: .66rem; }
-    .flow-step strong { font-size: .78rem; }
-    .flow-step.active { background: var(--mint); color: var(--green-dark); }
-    .flow-step.active > span, .flow-step.complete > span { background: var(--green); color: #fff; }
-    .step-view[hidden] { display: none; }
+    .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+    .step { display: flex; gap: 12px; min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.82); color: var(--muted); transition: border-color .15s, background .15s; }
+    .step.current { border-color: var(--green); background: #fff; box-shadow: 0 0 0 3px rgba(18,106,91,.08); }
+    .step.complete { border-color: #b6d9cd; background: var(--mint); }
+    .step-number { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 50%; background: #e8efed; color: #58716c; font-size: .85rem; font-weight: 800; }
+    .step.current .step-number, .step.complete .step-number { background: var(--green); color: white; }
+    .step strong { display: block; margin: 1px 0 4px; color: var(--ink); font-size: .86rem; }
+    .step p { margin: 0; font-size: .76rem; line-height: 1.45; }
+    .layout { display: block; margin-top: 18px; }
+    .task-screen[hidden] { display: none; }
     .panel { background: var(--white); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 12px 34px rgba(31, 69, 63, .06); }
     .scan-panel { padding: 24px; }
     .panel-title { margin: 0 0 6px; font-size: 1.1rem; letter-spacing: -.02em; }
@@ -55,6 +55,10 @@
     }
     input:focus { outline: 3px solid rgba(18, 106, 91, .15); border-color: var(--green); }
     .hint { margin: 8px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+    .mrz-ready { display: flex; gap: 10px; margin-top: 16px; padding: 12px; border: 1px solid #b6d9cd; border-radius: 10px; background: var(--mint); color: var(--green-dark); font-size: .83rem; line-height: 1.45; }
+    .mrz-ready[hidden] { display: none; }
+    .mrz-ready-mark { flex: none; font-weight: 900; }
+    .mrz-ready strong { display: block; margin-bottom: 2px; color: var(--ink); }
     .photo-button { width: 100%; min-height: 44px; margin-top: 12px; padding: 10px 14px; border: 1px solid var(--line); background: #f5faf8; color: var(--green-dark); }
     .photo-button:hover:not(:disabled) { background: var(--mint); }
     .camera-button { width: 100%; min-height: 48px; margin-top: 14px; padding: 12px 18px; background: var(--green); color: #fff; }
@@ -65,6 +69,13 @@
     button { border: 0; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 750; }
     .primary { width: 100%; min-height: 48px; margin-top: 17px; padding: 12px 18px; background: var(--green); color: #fff; transition: background .15s, transform .15s; }
     .primary:hover:not(:disabled) { background: var(--green-dark); transform: translateY(-1px); }
+    .step-actions { display: flex; gap: 10px; margin-top: 18px; }
+    .step-actions button { min-height: 48px; padding: 11px 16px; }
+    .step-actions .primary { flex: 1; width: auto; margin: 0; }
+    .secondary { background: var(--mint); color: var(--green-dark); }
+    .card-instructions { margin-top: 22px; padding: 17px; border: 1px solid var(--line); border-radius: 12px; background: #f7faf9; line-height: 1.55; }
+    .card-instructions strong { display: block; margin-bottom: 4px; }
+    .card-instructions p { margin: 0; color: var(--muted); font-size: .88rem; }
     button:disabled { cursor: wait; opacity: .55; }
     .status { display: flex; align-items: flex-start; gap: 11px; margin-top: 20px; padding: 13px; border-radius: 11px; background: #f1f6f4; color: #3b5551; font-size: .88rem; line-height: 1.45; }
     .dot { flex: none; width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; background: #97aaa5; }
@@ -76,18 +87,41 @@
     .progress { height: 5px; overflow: hidden; margin-top: 10px; border-radius: 10px; background: #dce8e5; }
     .progress > span { display: block; height: 100%; width: 25%; border-radius: inherit; background: var(--green); transition: width .2s; }
     .privacy { margin: 16px 0 0; color: #758783; font-size: .76rem; line-height: 1.5; }
-    .step-actions { display: flex; gap: 10px; margin-top: 18px; }
-    .step-actions button { min-height: 48px; padding: 11px 16px; }
-    .step-actions .primary { flex: 1; width: auto; margin: 0; }
-    .secondary { background: var(--mint); color: var(--green-dark); }
-    .card-instructions { margin-top: 23px; padding: 17px; border: 1px solid var(--line); border-radius: 12px; background: #f7faf9; line-height: 1.55; }
-    .card-instructions strong { display: block; margin-bottom: 4px; }
-    .card-instructions p { margin: 0; color: var(--muted); font-size: .88rem; }
     .result-panel { overflow: hidden; }
+    .empty { min-height: 310px; display: grid; place-items: center; padding: 36px; text-align: center; color: var(--muted); }
+    .empty-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 16px; border-radius: 18px; background: var(--mint); color: var(--green); font-size: 1.5rem; }
+    .empty strong { display: block; margin-bottom: 6px; color: var(--ink); }
+    .result { display: none; }
     .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
     .result-head h2 { margin: 0; font-size: 1rem; }
     .clear { padding: 8px 11px; background: #f0f5f3; color: var(--green-dark); font-size: .78rem; }
     .result-content { display: grid; grid-template-columns: 170px 1fr; gap: 22px; padding: 22px; }
+    .verification { margin: 0 22px 22px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #f7fbf9; }
+    .verification h3 { margin: 0 0 6px; font-size: .95rem; }
+    .verification p { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.55; }
+    .verification-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .verification-actions button { min-height: 44px; padding: 10px 12px; background: #e8f2ef; color: var(--green-dark); }
+    .verification-actions .verify { background: var(--green); color: white; }
+    .verification-actions .verify:hover:not(:disabled) { background: var(--green-dark); }
+    .history-panel { margin-top: 20px; padding: 20px 22px; }
+    .history-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .history-head h2 { margin: 0 0 4px; font-size: 1rem; }
+    .history-head p { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+    .history-head button, .history-toolbar button, .history-more { flex: none; min-height: 40px; padding: 9px 13px; border: 1px solid var(--line); background: #f5faf8; color: var(--green-dark); }
+    .history-content { margin-top: 16px; }
+    .history-toolbar { display: flex; gap: 10px; margin-bottom: 8px; }
+    .history-search { flex: 1; min-width: 0; font: 500 .9rem ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; text-transform: none; }
+    .history-status { min-height: 1.4em; margin: 8px 0; color: var(--muted); font-size: .8rem; }
+    .history-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+    .history-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .82rem; }
+    .history-table th, .history-table td { padding: 11px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    .history-table th { background: #f5faf8; color: var(--muted); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
+    .history-table tbody tr:last-child td { border-bottom: 0; }
+    .history-name { color: var(--ink); font-weight: 700; }
+    .history-thumb { display: block; width: 42px; height: 54px; border-radius: 7px; object-fit: cover; background: #edf3f1; }
+    .history-thumb-empty { display: grid; width: 62px; min-height: 42px; place-items: center; border-radius: 7px; background: #f1f5f3; color: var(--muted); font-size: .68rem; white-space: normal; text-align: center; }
+    .history-more { display: block; margin: 12px auto 0; }
+    .history-more[hidden] { display: none; }
     .photo-wrap { width: 100%; aspect-ratio: 3 / 4; overflow: hidden; display: grid; place-items: center; border-radius: 12px; background: #edf3f1; color: var(--muted); text-align: center; font-size: .78rem; }
     .photo-wrap img { width: 100%; height: 100%; object-fit: cover; }
     .photo-fallback { padding: 12px; }
@@ -102,9 +136,12 @@
     pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font: .77rem/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
     @media (max-width: 720px) {
       main { padding-top: 30px; }
-      .flow-step { padding: 8px 6px; gap: 6px; }
-      .flow-step strong { font-size: .69rem; }
-      .flow-step small { font-size: .6rem; }
+      .steps { grid-template-columns: 1fr; gap: 8px; }
+      .step { padding: 12px 14px; }
+      .layout { grid-template-columns: 1fr; }
+      .history-panel { padding: 16px; }
+      .history-head { align-items: flex-start; flex-direction: column; }
+      .empty { min-height: 205px; }
     }
     @media (max-width: 460px) {
       .result-content { grid-template-columns: 100px 1fr; gap: 15px; padding: 16px; }
@@ -119,57 +156,107 @@
   <main>
     <div class="eyebrow">Raspberry Pi · NFC</div>
     <h1>Đọc thông tin CCCD</h1>
-    <p class="intro">Mỗi màn hình chỉ làm một việc: đọc mã MRZ, quét chip NFC, rồi xem kết quả.</p>
+    <p class="intro">Đọc CCCD bằng NFC, lưu thông tin lên Firebase, rồi xác thực khuôn mặt trước khi kích relay mở cửa.</p>
 
-    <div class="steps" aria-label="Tiến trình">
-      <div class="flow-step active" data-step-indicator="1" aria-current="step"><span>1</span><div><small>Bước 1</small><strong>Đọc MRZ</strong></div></div>
-      <div class="flow-step" data-step-indicator="2"><span>2</span><div><small>Bước 2</small><strong>Quét chip</strong></div></div>
-      <div class="flow-step" data-step-indicator="3"><span>3</span><div><small>Bước 3</small><strong>Kết quả</strong></div></div>
+    <nav class="steps" aria-label="Các bước mở cửa">
+      <div class="step current" id="flowStep1" aria-current="step">
+        <span class="step-number">1</span>
+        <div><strong>Đọc mã MRZ</strong><p>Bấm “Quét mã MRZ”, đưa mặt sau CCCD vào camera Pi. Mã sẽ tự điền.</p></div>
+      </div>
+      <div class="step" id="flowStep2">
+        <span class="step-number">2</span>
+        <div><strong>Đọc chip NFC</strong><p>Đặt thẻ lên đầu đọc, bấm quét để lấy thông tin và lưu dữ liệu, ảnh lên Firebase.</p></div>
+      </div>
+      <div class="step" id="flowStep3">
+        <span class="step-number">3</span>
+        <div><strong>So khuôn mặt, mở cửa</strong><p>Sau khi lưu xong, bật camera xác thực rồi bấm so khớp.</p></div>
+      </div>
+    </nav>
+
+    <div class="status" id="status" role="status" aria-live="polite">
+      <span class="dot"></span>
+      <div><span id="statusText">Bước 1: lấy mã MRZ 24 ký tự.</span><div class="progress" id="progress" hidden><span id="progressBar"></span></div></div>
     </div>
 
-      <section class="panel scan-panel step-view" id="mrzStep" aria-labelledby="mrz-title">
+    <div class="layout">
+      <section class="panel scan-panel task-screen" id="mrzTask" aria-labelledby="scan-title">
         <span class="step-kicker">Bước 1 · Đọc mã</span>
-        <h2 class="panel-title" id="mrz-title">Đọc mã MRZ trên CCCD</h2>
-        <p class="sub">Dùng camera Pi, chọn ảnh mặt sau thẻ hoặc nhập mã 24 ký tự.</p>
-          <label for="mrzKey">MRZ key info · 24 ký tự</label>
-          <input id="mrzKey" name="mrz_key_info" type="text" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••" required>
-          <p class="hint">Ghép số giấy tờ, ngày sinh và ngày hết hạn cùng ký tự kiểm tra theo MRZ. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
-          <button class="camera-button" id="cameraButton" type="button">Bật camera Pi</button>
-          <div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ webcam Pi"></div>
-          <p class="hint">Brio 100 lấy nét cố định: đừng dí thẻ sát ống kính. Đặt thẻ ngang khoảng cách với khuôn mặt, đủ sáng và giữ yên; Pi sẽ tự đọc MRZ.</p>
-          <label class="visually-hidden" for="mrzPhoto">Chọn ảnh mặt sau CCCD</label>
-          <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
-          <button class="photo-button" id="photoButton" type="button">Hoặc chọn ảnh từ điện thoại / máy tính</button>
-          <p class="hint">Ảnh chỉ được giữ tạm trong lúc xử lý trên Pi rồi xóa; kiểm tra mã nhận dạng trước khi quét NFC.</p>
-        <div class="status" id="mrzStatus" role="status" aria-live="polite">
-          <span class="dot"></span>
-          <div><span id="mrzStatusText">Nhập mã MRZ hoặc bật camera để bắt đầu.</span></div>
+        <h2 class="panel-title" id="scan-title">Lấy mã MRZ trên CCCD</h2>
+        <p class="sub">Mã MRZ có 24 ký tự ở mặt sau thẻ. Có thể nhập tay, cho camera Pi đọc hoặc chọn ảnh.</p>
+        <label for="mrzKey">Mã MRZ · 24 ký tự</label>
+        <input id="mrzKey" name="mrz_key_info" type="text" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••">
+        <p class="hint">Mã gồm số giấy tờ, ngày sinh, ngày hết hạn và ký tự kiểm tra. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
+        <button class="camera-button" id="cameraButton" type="button">Quét mã MRZ bằng camera Pi</button>
+        <div id="mrzPreviewSlot"><div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ webcam Pi"></div></div>
+        <p class="hint">Dùng camera nối với Raspberry Pi. Đưa mặt sau CCCD vào khung hình; camera tự dừng khi đọc xong.</p>
+        <label class="visually-hidden" for="mrzPhoto">Chọn ảnh mặt sau CCCD</label>
+        <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+        <button class="photo-button" id="photoButton" type="button">Đọc mã MRZ từ ảnh mặt sau</button>
+        <div class="mrz-ready" id="mrzReadyHint" hidden>
+          <span class="mrz-ready-mark" aria-hidden="true">✓</span>
+          <span><strong>Đã có mã MRZ</strong>Kiểm tra mã, sau đó sang bước quét chip NFC.</span>
         </div>
         <div class="step-actions"><button class="primary" id="continueButton" type="button" disabled>Tiếp tục: quét chip →</button></div>
       </section>
 
-      <section class="panel scan-panel step-view" id="nfcStep" aria-labelledby="nfc-title" hidden>
+      <section class="panel scan-panel task-screen" id="nfcTask" aria-labelledby="nfc-title" hidden>
         <span class="step-kicker">Bước 2 · Đọc chip</span>
         <h2 class="panel-title" id="nfc-title">Quét chip NFC trên CCCD</h2>
-        <p class="sub">Đặt CCCD lên đầu đọc NFC đang nối với Raspberry Pi và giữ yên trong lúc đọc.</p>
-        <div class="card-instructions"><strong>Chuẩn bị thẻ</strong><p>Mã MRZ đã sẵn sàng. Đặt mặt trước CCCD lên đầu đọc, sau đó bấm nút bên dưới.</p></div>
-        <button class="primary" id="startButton" type="button">Bắt đầu quét chip</button>
-        <div class="status" id="scanStatus" role="status" aria-live="polite">
-          <span class="dot"></span>
-          <div><span id="scanStatusText">Sẵn sàng đọc chip CCCD.</span><div class="progress" id="progress" hidden><span id="progressBar"></span></div></div>
-        </div>
-        <div class="step-actions"><button class="secondary" id="backButton" type="button">← Quay lại MRZ</button></div>
+        <p class="sub">Đặt đúng thẻ vừa lấy mã MRZ lên đầu đọc đang nối với Raspberry Pi.</p>
+        <div class="card-instructions"><strong>Giữ thẻ yên trên đầu đọc</strong><p>Server sẽ đọc chip, trích xuất ảnh chân dung và lưu thông tin CCCD lên Firebase.</p></div>
+        <button class="primary" id="startButton" type="button" disabled>Bắt đầu quét chip và lưu Firebase</button>
+        <div class="step-actions"><button class="secondary" id="backButton" type="button">← Quay lại bước MRZ</button></div>
       </section>
 
-      <section class="panel result-panel step-view" id="resultStep" aria-live="polite" hidden>
-          <div class="result-head"><div><span class="step-kicker">Bước 3 · Hoàn tất</span><h2>Thông tin trên thẻ</h2></div><button type="button" class="clear" id="clearButton">Quét thẻ khác</button></div>
-          <div class="result-content">
-            <div class="photo-wrap" id="photoWrap"><span class="photo-fallback">Không có ảnh chân dung</span></div>
-            <div class="fields" id="fields"></div>
+      <section class="task-screen" id="resultTask" hidden>
+        <section class="panel result-panel" aria-live="polite">
+          <div class="empty" id="emptyState">
+            <div><div class="empty-icon" aria-hidden="true">▣</div><strong>Chưa có dữ liệu thẻ</strong><span>Thông tin thẻ sẽ hiện sau khi quét NFC thành công.</span></div>
           </div>
-          <details><summary>Xem MRZ gốc</summary><pre id="rawMrz"></pre></details>
+          <div class="result" id="result">
+            <div class="result-head"><div><span class="step-kicker">Bước 3 · Hoàn tất</span><h2>Thông tin trên thẻ</h2></div><button type="button" class="clear" id="clearButton">Quét thẻ khác</button></div>
+            <div class="result-content">
+              <div class="photo-wrap" id="photoWrap"><span class="photo-fallback">Không có ảnh chân dung</span></div>
+              <div class="fields" id="fields"></div>
+            </div>
+            <div class="verification" id="verification" hidden>
+              <h3>Xác thực khuôn mặt</h3>
+              <p id="verificationHint">Dữ liệu CCCD đã được lưu. Bật camera, đặt khuôn mặt vào khung hình rồi xác thực.</p>
+              <div id="facePreviewSlot"></div>
+              <div class="verification-actions">
+                <button type="button" id="faceCameraButton">Bật camera để thấy khuôn mặt</button>
+                <button type="button" class="verify" id="verifyButton" disabled>So khớp và mở cửa</button>
+              </div>
+            </div>
+            <details><summary>Xem MRZ gốc</summary><pre id="rawMrz"></pre></details>
+          </div>
+        </section>
+
+        <section class="panel history-panel" aria-labelledby="historyTitle">
+          <div class="history-head">
+            <div><h2 id="historyTitle">CCCD đã lưu trên Firebase</h2><p>Mỗi CCCD hiện một dòng, kèm ảnh và thời điểm lưu gần nhất. Thẻ cũ cần quét lại để tải ảnh lên.</p></div>
+            <button type="button" id="historyToggle" aria-expanded="false">Xem danh sách</button>
+          </div>
+          <div class="history-content" id="historyContent" hidden>
+            <div class="history-toolbar">
+              <label class="visually-hidden" for="historySearch">Lọc danh sách CCCD đã tải</label>
+              <input class="history-search" id="historySearch" type="search" placeholder="Lọc tên hoặc số giấy tờ đã tải">
+              <button type="button" id="historyRefresh">Tải lại</button>
+            </div>
+            <p class="history-status" id="historyStatus" role="status" aria-live="polite">Đang chờ tải danh sách.</p>
+            <div class="history-table-wrap">
+              <table class="history-table">
+                <thead><tr><th>Ảnh chân dung</th><th>Họ và tên</th><th>Số giấy tờ</th><th>Ngày sinh</th><th>Ngày hết hạn</th><th>Lưu gần nhất</th></tr></thead>
+                <tbody id="historyRows"></tbody>
+              </table>
+            </div>
+            <button type="button" class="history-more" id="historyMore" hidden>Tải thêm CCCD</button>
+          </div>
+        </section>
       </section>
-    <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Thông tin thẻ nằm trong bộ nhớ khi server chạy; ảnh trích xuất được lưu trong thư mục <code>output/</code>.</p>
+    </div>
+
+    <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Thông tin chữ nằm trong Firestore; ảnh DG2 nằm trong Firebase Storage riêng tư. Ảnh webcam chỉ được xử lý trên Pi, không lưu lại.</p>
   </main>
   <script>
     const keyInput = document.getElementById('mrzKey');
@@ -180,24 +267,53 @@
     const photoInput = document.getElementById('mrzPhoto');
     const cameraPreview = document.getElementById('cameraPreview');
     const cameraImage = document.getElementById('cameraImage');
-    const mrzStatus = document.getElementById('mrzStatus');
-    const mrzStatusText = document.getElementById('mrzStatusText');
-    const scanStatus = document.getElementById('scanStatus');
-    const scanStatusText = document.getElementById('scanStatusText');
+    const mrzPreviewSlot = document.getElementById('mrzPreviewSlot');
+    const facePreviewSlot = document.getElementById('facePreviewSlot');
+    const statusBox = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
     const progress = document.getElementById('progress');
     const progressBar = document.getElementById('progressBar');
-    const stepViews = [
-      document.getElementById('mrzStep'),
-      document.getElementById('nfcStep'),
-      document.getElementById('resultStep')
+    const emptyState = document.getElementById('emptyState');
+    const result = document.getElementById('result');
+    const mrzReadyHint = document.getElementById('mrzReadyHint');
+    const taskScreens = [
+      document.getElementById('mrzTask'),
+      document.getElementById('nfcTask'),
+      document.getElementById('resultTask')
     ];
+    const workflowSteps = [
+      document.getElementById('flowStep1'),
+      document.getElementById('flowStep2'),
+      document.getElementById('flowStep3')
+    ];
+    const verification = document.getElementById('verification');
+    const verificationHint = document.getElementById('verificationHint');
+    const faceCameraButton = document.getElementById('faceCameraButton');
+    const verifyButton = document.getElementById('verifyButton');
+    const historyToggle = document.getElementById('historyToggle');
+    const historyContent = document.getElementById('historyContent');
+    const historyRows = document.getElementById('historyRows');
+    const historyStatus = document.getElementById('historyStatus');
+    const historySearch = document.getElementById('historySearch');
+    const historyRefresh = document.getElementById('historyRefresh');
+    const historyMore = document.getElementById('historyMore');
     let polling = false;
     let cameraActive = false;
+    let faceCameraActive = false;
+    let faceCameraReady = false;
+    let canVerifyFace = false;
+    let currentStatus = 'idle';
+    let currentTask = 1;
+    let mrzReady = false;
+    let mrzKeyDraft = '';
+    let cccdSaved = false;
     let cameraFrameBusy = false;
     let cameraFrameUrl = null;
-    let currentStep = 1;
-    let mrzKeyDraft = '';
-    let mrzProcessing = false;
+    let historyLoaded = false;
+    let historyLoading = false;
+    let historyCursor = null;
+    let historyHasMore = false;
+    let historyCount = 0;
 
     function clearCameraPreview() {
       cameraPreview.hidden = true;
@@ -206,48 +322,169 @@
       cameraFrameUrl = null;
     }
 
-    function showStep(step) {
-      currentStep = step;
-      stepViews.forEach((view, index) => { view.hidden = index + 1 !== step; });
-      document.querySelectorAll('[data-step-indicator]').forEach((indicator) => {
-        const number = Number(indicator.dataset.stepIndicator);
-        indicator.classList.toggle('active', number === step);
-        indicator.classList.toggle('complete', number < step);
-        if (number === step) indicator.setAttribute('aria-current', 'step');
-        else indicator.removeAttribute('aria-current');
-      });
+    function showTask(task) {
+      currentTask = task;
+      taskScreens.forEach((screen, index) => { screen.hidden = index + 1 !== task; });
+      updateWorkflow();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    function normalizedMrzKey() {
-      return keyInput.value.replace(/\s/g, '').toUpperCase();
+    function updateFaceControls() {
+      const visible = result.style.display === 'block';
+      verification.hidden = !visible;
+      faceCameraButton.hidden = !canVerifyFace;
+      verifyButton.hidden = !canVerifyFace;
+      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera để thấy khuôn mặt';
+      faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'door_opened'].includes(currentStatus);
+      verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'door_opened'].includes(currentStatus);
     }
 
-    function updateContinueButton() {
-      const key = normalizedMrzKey();
-      continueButton.disabled = !/^[0-9A-Z<]{24}$/.test(key) || cameraActive || mrzProcessing;
+    function normalizeHistoryText(value) {
+      return String(value || '').toLocaleLowerCase('vi')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd');
+    }
+
+    function formatHistoryTime(value) {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '—';
+      return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+    }
+
+    function filterHistoryRows() {
+      const query = normalizeHistoryText(historySearch.value.trim());
+      let visibleCount = 0;
+      historyRows.querySelectorAll('tr[data-history-row]').forEach((row) => {
+        const matches = !query || normalizeHistoryText(row.dataset.search).includes(query);
+        row.hidden = !matches;
+        if (matches) visibleCount += 1;
+      });
+      if (query) {
+        historyStatus.textContent = `Tìm thấy ${visibleCount} CCCD trong ${historyCount} CCCD đã tải.`;
+      } else if (!historyCount) {
+        historyStatus.textContent = 'Firebase chưa có CCCD nào được lưu.';
+      } else {
+        historyStatus.textContent = historyHasMore
+          ? `Đã tải ${historyCount} CCCD. Có thể tải thêm các bản ghi cũ hơn.`
+          : `Đã tải hết ${historyCount} CCCD.`;
+      }
+    }
+
+    function appendHistoryRows(items) {
+      items.forEach((item) => {
+        const row = document.createElement('tr');
+        row.dataset.historyRow = 'true';
+        row.dataset.search = `${item.full_name || ''} ${item.document_number || ''}`;
+        const photoCell = document.createElement('td');
+        if (item.photo_id) {
+          const image = document.createElement('img');
+          image.className = 'history-thumb';
+          image.alt = 'Ảnh chân dung trong CCCD';
+          image.loading = 'lazy';
+          image.src = `/api/history/photo/${encodeURIComponent(item.photo_id)}`;
+          image.onerror = () => {
+            const fallback = document.createElement('span');
+            fallback.className = 'history-thumb-empty';
+            fallback.textContent = 'Không tải được ảnh';
+            photoCell.replaceChildren(fallback);
+          };
+          photoCell.append(image);
+        } else {
+          const fallback = document.createElement('span');
+          fallback.className = 'history-thumb-empty';
+          fallback.textContent = 'Chưa lưu ảnh';
+          photoCell.append(fallback);
+        }
+        row.append(photoCell);
+        const values = [
+          item.full_name,
+          item.document_number,
+          item.date_of_birth,
+          item.expiry_date,
+          formatHistoryTime(item.updated_at)
+        ];
+        values.forEach((value, index) => {
+          const cell = document.createElement('td');
+          cell.textContent = value || '—';
+          if (index === 0) cell.className = 'history-name';
+          row.append(cell);
+        });
+        historyRows.append(row);
+      });
+      historyCount += items.length;
+      filterHistoryRows();
+    }
+
+    async function loadHistory(reset = false) {
+      if (historyLoading) return;
+      historyLoading = true;
+      historyRefresh.disabled = true;
+      historyMore.disabled = true;
+      if (reset) {
+        historyCursor = null;
+        historyHasMore = false;
+        historyCount = 0;
+        historyRows.replaceChildren();
+        historyStatus.textContent = 'Đang tải danh sách từ Firebase…';
+      } else {
+        historyStatus.textContent = 'Đang tải thêm CCCD…';
+      }
+
+      try {
+        const query = historyCursor ? `?cursor=${encodeURIComponent(historyCursor)}` : '';
+        const response = await fetch(`/api/history${query}`, { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không tải được lịch sử CCCD.');
+        appendHistoryRows(Array.isArray(payload.items) ? payload.items : []);
+        historyCursor = payload.next_cursor || null;
+        historyHasMore = Boolean(payload.has_more && historyCursor);
+        historyLoaded = true;
+        historyMore.hidden = !historyHasMore;
+        filterHistoryRows();
+      } catch (error) {
+        historyStatus.textContent = error.message || 'Không kết nối được Firebase.';
+      } finally {
+        historyLoading = false;
+        historyRefresh.disabled = false;
+        historyMore.disabled = false;
+      }
+    }
+
+    function updateWorkflow() {
+      workflowSteps.forEach((step, index) => {
+        const number = index + 1;
+        const complete = number < currentTask || (number === 3 && currentStatus === 'door_opened');
+        const current = number === currentTask;
+        step.classList.toggle('complete', complete);
+        step.classList.toggle('current', current);
+        if (current) step.setAttribute('aria-current', 'step');
+        else step.removeAttribute('aria-current');
+      });
+      const busy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(currentStatus);
+      mrzReadyHint.hidden = !mrzReady;
+      continueButton.disabled = !mrzReady || cameraActive || busy;
+      startButton.disabled = !mrzReady || currentTask !== 2 || busy || currentStatus === 'camera_scanning';
     }
 
     function setStatus(state) {
-      const scanBusy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status);
-      const cameraBusy = state.status === 'camera_scanning';
-      const isNfcState = ['waiting_for_card', 'reading_dg1', 'reading_dg2'].includes(state.status)
-        || (state.status === 'authenticating' && currentStep === 2)
-        || state.status === 'done'
-        || (state.status === 'error' && currentStep === 2);
-      const mrzBusy = state.status === 'authenticating' && currentStep === 1;
-      const box = isNfcState ? scanStatus : mrzStatus;
-      const text = isNfcState ? scanStatusText : mrzStatusText;
-      box.className = 'status';
-      if (scanBusy || cameraBusy || mrzBusy) box.classList.add('busy');
-      if (state.status === 'done' || state.status === 'camera_done') box.classList.add('success');
-      if (state.status === 'error' || state.status === 'camera_error') box.classList.add('error');
-      text.textContent = state.message || '';
-      startButton.disabled = scanBusy;
-      photoButton.disabled = scanBusy || cameraBusy || mrzBusy;
-      cameraButton.disabled = scanBusy || (cameraBusy && !cameraActive) || mrzBusy;
-      cameraButton.textContent = cameraActive ? 'Dừng camera' : 'Bật camera Pi';
-      updateContinueButton();
+      currentStatus = state.status;
+      if (['waiting_for_card', 'reading_dg1', 'reading_dg2', 'saving_firebase'].includes(state.status)
+        || (state.status === 'authenticating' && currentTask === 2)) showTask(2);
+      if (['verifying_face', 'face_error', 'face_mismatch', 'door_opened'].includes(state.status)) showTask(3);
+      if (state.status === 'camera_scanning') showTask(faceCameraActive ? 3 : 1);
+      statusBox.className = 'status';
+      const scanBusy = ['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(state.status);
+      const busy = scanBusy || state.status === 'camera_scanning';
+      if (busy) statusBox.classList.add('busy');
+      if (state.status === 'done' || state.status === 'camera_done' || state.status === 'door_opened') statusBox.classList.add('success');
+      if (['error', 'camera_error', 'face_error', 'face_mismatch'].includes(state.status)) statusBox.classList.add('error');
+      statusText.textContent = state.message || '';
+      photoButton.disabled = scanBusy || state.status === 'camera_scanning';
+      keyInput.disabled = scanBusy;
+      cameraButton.disabled = scanBusy || (state.status === 'authenticating' && !cameraActive);
+      cameraButton.textContent = cameraActive ? 'Dừng quét MRZ' : 'Quét mã MRZ bằng camera Pi';
       if (state.progress) {
         progress.hidden = false;
         progressBar.style.width = `${state.progress.percent}%`;
@@ -255,11 +492,51 @@
         progress.hidden = true;
         progressBar.style.width = '25%';
       }
-      if (state.status === 'done' && state.data) {
-        showResult(state);
-        showStep(3);
+      if (state.data && ['done', 'verifying_face', 'face_error', 'face_mismatch', 'door_opened'].includes(state.status)) showResult(state);
+      if (state.status === 'done' && historyLoaded && !historyContent.hidden) loadHistory(true);
+      if (state.status === 'idle') {
+        result.style.display = 'none';
+        emptyState.style.display = 'grid';
       }
+      updateFaceControls();
+      updateWorkflow();
     }
+
+    keyInput.addEventListener('input', () => {
+      if (cccdSaved && keyInput.value.trim()) {
+        cccdSaved = false;
+        canVerifyFace = false;
+        mrzKeyDraft = '';
+        result.style.display = 'none';
+        emptyState.style.display = 'grid';
+        updateFaceControls();
+      }
+      mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value.replace(/\s/g, '').toUpperCase());
+      updateWorkflow();
+    });
+
+    continueButton.addEventListener('click', () => {
+      const mrzKey = keyInput.value.replace(/\s/g, '').toUpperCase();
+      if (!/^[0-9A-Z<]{24}$/.test(mrzKey)) {
+        mrzReady = false;
+        setStatus({ status: 'error', message: 'MRZ key info cần đúng 24 ký tự.' });
+        keyInput.focus();
+        updateWorkflow();
+        return;
+      }
+      mrzKeyDraft = mrzKey;
+      mrzReady = true;
+      showTask(2);
+      setStatus({ status: 'idle', message: 'Đặt CCCD lên đầu đọc NFC rồi bấm “Bắt đầu quét chip”.' });
+      startButton.focus();
+    });
+
+    document.getElementById('backButton').addEventListener('click', () => {
+      keyInput.value = mrzKeyDraft;
+      mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value);
+      showTask(1);
+      keyInput.focus();
+    });
 
     function addField(label, value, wide = false, name = false) {
       const box = document.createElement('div');
@@ -276,6 +553,8 @@
 
     function showResult(state) {
       const data = state.data;
+      cccdSaved = true;
+      canVerifyFace = state.can_verify_face !== false;
       document.getElementById('fields').replaceChildren();
       addField('Họ và tên', data.full_name, true, true);
       addField('Số giấy tờ', data.document_number);
@@ -286,6 +565,9 @@
       addField('Loại giấy tờ', data.document_type);
       addField('Nơi cấp', data.issuing_country);
       document.getElementById('rawMrz').textContent = data.mrz || (state.mrz_lines || []).join('\n');
+      verificationHint.textContent = canVerifyFace
+        ? `Đã lưu dữ liệu CCCD lên Firebase${state.photo_in_firebase ? ' cùng ảnh chân dung' : '; ảnh chân dung chưa được lưu lên Firebase'}. Bật camera, nhìn thẳng vào camera rồi xác thực.`
+        : 'Đã lưu dữ liệu CCCD lên Firebase nhưng không đọc được ảnh chân dung DG2 nên chưa thể xác thực khuôn mặt.';
 
       const photoWrap = document.getElementById('photoWrap');
       photoWrap.replaceChildren();
@@ -300,6 +582,12 @@
         photoWrap.append(message);
       };
       photoWrap.append(image);
+      emptyState.style.display = 'none';
+      result.style.display = 'block';
+      mrzKeyDraft = '';
+      showTask(3);
+      updateFaceControls();
+      updateWorkflow();
     }
 
     async function pollStatus() {
@@ -308,9 +596,9 @@
       try {
         const response = await fetch('/api/status', { cache: 'no-store' });
         const state = await response.json();
-        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status)) showStep(2);
+        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase'].includes(state.status)) showTask(2);
         setStatus(state);
-        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2'].includes(state.status)) {
+        if (['waiting_for_card', 'authenticating', 'reading_dg1', 'reading_dg2', 'saving_firebase', 'verifying_face'].includes(state.status)) {
           setTimeout(() => { polling = false; pollStatus(); }, 700);
           return;
         }
@@ -320,38 +608,33 @@
       polling = false;
     }
 
-    keyInput.addEventListener('input', updateContinueButton);
-
-    continueButton.addEventListener('click', () => {
-      const mrzKey = normalizedMrzKey();
-      if (!/^[0-9A-Z<]{24}$/.test(mrzKey)) {
-        setStatus({ status: 'error', message: 'MRZ key info cần đúng 24 ký tự.' });
-        keyInput.focus();
-        return;
-      }
-      mrzKeyDraft = mrzKey;
-      scanStatus.className = 'status';
-      scanStatusText.textContent = 'Sẵn sàng đọc chip CCCD.';
-      startButton.disabled = false;
-      showStep(2);
-    });
-
-    document.getElementById('backButton').addEventListener('click', () => {
-      keyInput.value = mrzKeyDraft;
-      showStep(1);
-      updateContinueButton();
-    });
-
     startButton.addEventListener('click', async () => {
-      const mrzKey = mrzKeyDraft || normalizedMrzKey();
+      if (faceCameraActive) await stopFaceCamera();
+      if (cameraActive) {
+        cameraActive = false;
+        clearCameraPreview();
+        await fetch('/api/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
+      }
+      const mrzKey = mrzKeyDraft || keyInput.value.replace(/\s/g, '').toUpperCase();
       if (!/^[0-9A-Z<]{24}$/.test(mrzKey)) {
-        showStep(1);
+        mrzReady = false;
+        showTask(1);
+        updateWorkflow();
         setStatus({ status: 'error', message: 'MRZ key info cần đúng 24 ký tự.' });
         keyInput.focus();
         return;
       }
+      mrzReady = true;
+      mrzKeyDraft = mrzKey;
+      cccdSaved = false;
+      canVerifyFace = false;
+      result.style.display = 'none';
+      emptyState.style.display = 'grid';
+      updateFaceControls();
+      showTask(2);
+      updateWorkflow();
       startButton.disabled = true;
-      setStatus({ status: 'waiting_for_card', message: 'Đang khởi động đầu đọc…' });
+      setStatus({ status: 'waiting_for_card', message: 'Bước 2: Đặt CCCD lên đầu đọc NFC, Pi đang chờ thẻ…' });
       try {
         const response = await fetch('/api/scan', {
           method: 'POST',
@@ -361,8 +644,8 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không bắt đầu được lượt quét.');
-        mrzKeyDraft = '';
         keyInput.value = '';
+        updateWorkflow();
         await pollStatus();
       } catch (error) {
         setStatus({ status: 'error', message: error.message });
@@ -374,8 +657,6 @@
       const image = photoInput.files && photoInput.files[0];
       if (!image) return;
       photoButton.disabled = true;
-      mrzProcessing = true;
-      updateContinueButton();
       setStatus({ status: 'authenticating', message: 'Đang nhận dạng MRZ từ ảnh…' });
       try {
         const response = await fetch('/api/mrz-ocr', {
@@ -386,17 +667,20 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không đọc được MRZ từ ảnh.');
+        cccdSaved = false;
+        canVerifyFace = false;
+        result.style.display = 'none';
+        emptyState.style.display = 'grid';
         keyInput.value = payload.mrz_key_info;
-        setStatus({ status: 'idle', message: payload.message });
-        updateContinueButton();
-        keyInput.focus();
+        mrzReady = true;
+        updateWorkflow();
+        setStatus({ status: 'idle', message: 'Đã đọc mã MRZ. Bước tiếp: đặt CCCD lên đầu đọc NFC rồi bấm “Bước 2”.' });
+        startButton.focus();
       } catch (error) {
         setStatus({ status: 'error', message: error.message });
       } finally {
         photoInput.value = '';
-        mrzProcessing = false;
         photoButton.disabled = false;
-        updateContinueButton();
       }
     });
 
@@ -408,30 +692,25 @@
         setStatus({ status: 'idle', message: 'Đã tắt camera Pi.' });
         return;
       }
-      mrzProcessing = true;
-      updateContinueButton();
       cameraButton.disabled = true;
-      setStatus({ status: 'authenticating', message: 'Đang bật camera Pi…' });
+      setStatus({ status: 'authenticating', message: 'Đang mở camera Pi. Đưa mặt sau CCCD vào khung hình; mã sẽ tự điền khi được nhận diện.' });
       try {
         const response = await fetch('/api/camera/start', { method: 'POST', cache: 'no-store' });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không bật được webcam Pi.');
-        mrzProcessing = false;
         cameraActive = true;
+        mrzPreviewSlot.append(cameraPreview);
         cameraPreview.hidden = false;
         setStatus({ status: 'camera_scanning', message: payload.message });
         refreshCameraFrame();
         pollCameraRecognition();
       } catch (error) {
-        mrzProcessing = false;
         setStatus({ status: 'error', message: error.message });
-      } finally {
-        updateContinueButton();
       }
     });
 
     async function refreshCameraFrame() {
-      if (!cameraActive || cameraFrameBusy) return;
+      if ((!cameraActive && !faceCameraActive) || cameraFrameBusy) return;
       cameraFrameBusy = true;
       try {
         const response = await fetch(`/api/camera/frame?v=${Date.now()}`, { cache: 'no-store' });
@@ -446,7 +725,7 @@
         // The camera may need a moment to produce its first frame.
       } finally {
         cameraFrameBusy = false;
-        if (cameraActive) setTimeout(refreshCameraFrame, 200);
+        if (cameraActive || faceCameraActive) setTimeout(refreshCameraFrame, 200);
       }
     }
 
@@ -457,11 +736,16 @@
         const state = await response.json();
         if (state.status === 'camera_done') {
           cameraActive = false;
+          cccdSaved = false;
+          canVerifyFace = false;
+          result.style.display = 'none';
+          emptyState.style.display = 'grid';
           keyInput.value = state.mrz_key_info || '';
+          mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value);
+          updateWorkflow();
           clearCameraPreview();
           setStatus({ status: 'idle', message: state.message });
-          updateContinueButton();
-          keyInput.focus();
+          startButton.focus();
           return;
         }
         if (state.status === 'camera_error' || state.status === 'camera_stopped') {
@@ -481,22 +765,116 @@
       if (cameraActive) setTimeout(pollCameraRecognition, 650);
     }
 
+    async function stopFaceCamera() {
+      faceCameraActive = false;
+      faceCameraReady = false;
+      clearCameraPreview();
+      await fetch('/api/face/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
+      updateFaceControls();
+    }
+
+    faceCameraButton.addEventListener('click', async () => {
+      if (faceCameraActive) {
+        await stopFaceCamera();
+        setStatus({ status: currentStatus === 'door_opened' ? 'door_opened' : 'done', message: 'Đã tắt camera xác thực.' });
+        return;
+      }
+      faceCameraButton.disabled = true;
+      try {
+        const response = await fetch('/api/face/camera/start', { method: 'POST', cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không bật được camera xác thực.');
+        faceCameraActive = true;
+        faceCameraReady = false;
+        facePreviewSlot.append(cameraPreview);
+        cameraPreview.hidden = false;
+        setStatus({ status: 'camera_scanning', message: payload.message });
+        refreshCameraFrame();
+        pollFaceCameraReady();
+      } catch (error) {
+        setStatus({ status: 'face_error', message: error.message });
+      }
+    });
+
+    async function pollFaceCameraReady() {
+      if (!faceCameraActive) return;
+      try {
+        const response = await fetch('/api/camera/status', { cache: 'no-store' });
+        const state = await response.json();
+        if (state.status === 'camera_error' || state.status === 'camera_stopped') {
+          faceCameraActive = false;
+          faceCameraReady = false;
+          clearCameraPreview();
+          setStatus({ status: state.status === 'camera_error' ? 'face_error' : 'done', message: state.message });
+          return;
+        }
+        faceCameraReady = Boolean(state.frame_ready);
+        if (faceCameraReady) {
+          statusText.textContent = 'Camera đã sẵn sàng. Nhìn thẳng vào camera rồi bấm “So khớp và mở cửa”.';
+          verificationHint.textContent = 'Camera đang hoạt động. Nhìn thẳng vào khung hình rồi bấm “So khớp và mở cửa”.';
+          updateFaceControls();
+        }
+      } catch (_) {
+        faceCameraActive = false;
+        faceCameraReady = false;
+        clearCameraPreview();
+        setStatus({ status: 'face_error', message: 'Mất kết nối tới webcam Pi.' });
+        return;
+      }
+      if (faceCameraActive && !faceCameraReady) setTimeout(pollFaceCameraReady, 250);
+    }
+
+    verifyButton.addEventListener('click', async () => {
+      verifyButton.disabled = true;
+      setStatus({ status: 'verifying_face', message: 'Đang so khớp khuôn mặt với ảnh trên CCCD…' });
+      try {
+        const response = await fetch('/api/face/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: '{}'
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Không xác thực được khuôn mặt.');
+        setStatus({ status: payload.unlocked ? 'door_opened' : 'face_mismatch', message: payload.message });
+        if (payload.unlocked) await stopFaceCamera();
+      } catch (error) {
+        setStatus({ status: 'face_error', message: error.message });
+      }
+    });
+
     window.addEventListener('pagehide', () => {
       if (cameraActive) {
         fetch('/api/camera/stop', { method: 'POST', keepalive: true, cache: 'no-store' }).catch(() => {});
       }
+      if (faceCameraActive) {
+        fetch('/api/face/camera/stop', { method: 'POST', keepalive: true, cache: 'no-store' }).catch(() => {});
+      }
     });
+
+    historyToggle.addEventListener('click', () => {
+      const opening = historyContent.hidden;
+      historyContent.hidden = !opening;
+      historyToggle.setAttribute('aria-expanded', String(opening));
+      historyToggle.textContent = opening ? 'Ẩn danh sách' : 'Xem danh sách';
+      if (opening && !historyLoaded) loadHistory(true);
+    });
+    historyRefresh.addEventListener('click', () => loadHistory(true));
+    historyMore.addEventListener('click', () => loadHistory(false));
+    historySearch.addEventListener('input', filterHistoryRows);
 
     document.getElementById('clearButton').addEventListener('click', async () => {
+      if (faceCameraActive) await stopFaceCamera();
       await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      cccdSaved = false;
       mrzKeyDraft = '';
       keyInput.value = '';
-      showStep(1);
+      mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value);
+      canVerifyFace = false;
+      showTask(1);
       setStatus({ status: 'idle', message: 'Đã xóa thông tin khỏi trang.' });
-      updateContinueButton();
     });
 
-    updateContinueButton();
     pollStatus();
   </script>
 </body>

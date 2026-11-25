@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import os
+import pwd
 import select
 import shutil
 import subprocess
 import tempfile
 import threading
 import time
-import pwd
 
 from .mrz_ocr import read_mrz_key_live
 
 
 def _jpeg_frames(stream, stop_event: threading.Event):
-    """Yield complete JPEGs from FFmpeg and fail if the webcam stops sending frames."""
+    """Yield complete JPEGs and stop waiting if the device stops producing frames."""
     buffer = bytearray()
     last_frame = time.monotonic()
     while not stop_event.is_set():
@@ -54,6 +54,7 @@ class WebcamManager:
     def __init__(self):
         self._condition = threading.Condition()
         self._frame: bytes | None = None
+        self._frame_at: float | None = None
         self._sequence = 0
         self._stop_event: threading.Event | None = None
         self._process: subprocess.Popen | None = None
@@ -65,16 +66,21 @@ class WebcamManager:
 
     def snapshot(self) -> dict:
         with self._condition:
-            return dict(self._state)
+            return {**self._state, "frame_ready": self._frame is not None}
 
     def frame(self) -> bytes | None:
         with self._condition:
             return self._frame
 
-    def start(self) -> tuple[bool, str]:
+    def frame_snapshot(self) -> tuple[bytes | None, float | None]:
+        with self._condition:
+            age = time.monotonic() - self._frame_at if self._frame_at is not None else None
+            return self._frame, age
+
+    def start(self, recognize_mrz: bool = True) -> tuple[bool, str]:
         if not shutil.which("ffmpeg"):
             return False, "Pi chưa cài ffmpeg. Chạy: sudo apt install ffmpeg"
-        if not shutil.which("tesseract"):
+        if recognize_mrz and not shutil.which("tesseract"):
             return False, "Pi chưa cài Tesseract OCR. Chạy: sudo apt install tesseract-ocr"
 
         device = os.environ.get("CCCD_CAMERA_DEVICE", "/dev/video0")
@@ -87,18 +93,36 @@ class WebcamManager:
             if self._state["status"] == "camera_scanning":
                 return False, "Camera Pi đang chạy."
             self._frame = None
+            self._frame_at = None
             self._sequence = 0
             self._stop_event = threading.Event()
             self._state = {
                 "status": "camera_scanning",
-                "message": "Đang mở camera Pi. Camera tự tắt sau 2 phút.",
+                "message": (
+                    "Đang mở camera Pi để xác thực khuôn mặt."
+                    if not recognize_mrz
+                    else "Đang mở camera Pi. Camera tự tắt sau 2 phút."
+                ),
                 "mrz_key_info": None,
             }
             stop_event = self._stop_event
 
-        threading.Thread(target=self._capture_loop, args=(stop_event,), daemon=True, name="cccd-camera").start()
-        threading.Thread(target=self._recognize_loop, args=(stop_event,), daemon=True, name="cccd-mrz-ocr").start()
-        return True, "Đang bật camera Pi. Đưa mặt sau CCCD vào khung hình."
+        threading.Thread(
+            target=self._capture_loop,
+            args=(stop_event, recognize_mrz),
+            daemon=True,
+            name="cccd-camera",
+        ).start()
+        if recognize_mrz:
+            threading.Thread(
+                target=self._recognize_loop,
+                args=(stop_event,),
+                daemon=True,
+                name="cccd-mrz-ocr",
+            ).start()
+        if recognize_mrz:
+            return True, "Đang bật camera Pi. Đưa mặt sau CCCD vào khung hình."
+        return True, "Camera xác thực đã bật. Nhìn thẳng vào camera rồi bấm xác thực."
 
     def stop(self) -> None:
         with self._condition:
@@ -107,6 +131,7 @@ class WebcamManager:
             process = self._process
             self._process = None
             self._frame = None
+            self._frame_at = None
             self._state = {
                 "status": "camera_stopped",
                 "message": "Camera Pi đã tắt.",
@@ -133,6 +158,7 @@ class WebcamManager:
             process = self._process
             self._process = None
             self._frame = None
+            self._frame_at = None
             self._state = {
                 "status": "camera_error",
                 "message": message,
@@ -142,15 +168,12 @@ class WebcamManager:
             self._condition.notify_all()
         self._terminate(process)
 
-    def _capture_loop(self, stop_event: threading.Event) -> None:
+    def _capture_loop(self, stop_event: threading.Event, recognize_mrz: bool) -> None:
         deadline = time.monotonic() + self.MAX_SESSION_SECONDS
         device = os.environ.get("CCCD_CAMERA_DEVICE", "/dev/video0")
         process: subprocess.Popen | None = None
         try:
             executable = shutil.which("ffmpeg") or "ffmpeg"
-            # Try the common 720p MJPEG mode first. Some webcams (and virtual
-            # V4L2 devices) reject a forced frame rate or pixel format, so the
-            # second attempt lets V4L2 choose its default and encodes JPEGs.
             profiles = (
                 (
                     "MJPEG 1280x720",
@@ -201,6 +224,7 @@ class WebcamManager:
                                 with self._condition:
                                     if self._stop_event is stop_event:
                                         self._frame = None
+                                        self._frame_at = None
                                         self._state = {
                                             "status": "camera_stopped",
                                             "message": "Camera tự tắt sau 2 phút. Bấm bật lại nếu cần quét tiếp.",
@@ -214,9 +238,14 @@ class WebcamManager:
                                 if self._stop_event is not stop_event or stop_event.is_set():
                                     return
                                 self._frame = image
+                                self._frame_at = time.monotonic()
                                 self._sequence += 1
                                 frame_count += 1
-                                self._state["message"] = "Đưa mặt sau CCCD vào khung hình, giữ thẻ nằm ngang; Pi đang tự tìm MRZ…"
+                                self._state["message"] = (
+                                    "Đưa mặt sau CCCD vào khung hình, giữ thẻ nằm ngang; Pi đang tự tìm MRZ…"
+                                    if recognize_mrz
+                                    else "Camera đang chờ khuôn mặt để xác thực…"
+                                )
                                 self._condition.notify_all()
                     except TimeoutError as exc:
                         stream_timeout = str(exc)
@@ -313,6 +342,7 @@ class WebcamManager:
                 if self._stop_event is not stop_event or stop_event.is_set():
                     return
                 self._frame = None
+                self._frame_at = None
                 self._state = {
                     "status": "camera_done",
                     "message": "Đã nhận diện MRZ. Mã đã được điền vào ô.",
