@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 _LOCK = threading.Lock()
 _MRZ_KEY_LOCK = threading.Lock()
+_DEFAULT_STORAGE_BUCKET = "cccd-pi3.firebasestorage.app"
 _FIELDS = (
     "full_name",
     "document_number",
@@ -81,9 +82,9 @@ def _storage_bucket():
     except ImportError as exc:
         raise RuntimeError("Firebase Admin SDK chưa có hỗ trợ Cloud Storage.") from exc
 
-    bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "").strip()
-    if not bucket_name:
-        raise RuntimeError("Chưa cấu hình FIREBASE_STORAGE_BUCKET trong web.env.")
+    bucket_name = os.environ.get("FIREBASE_STORAGE_BUCKET", "").strip() or _DEFAULT_STORAGE_BUCKET
+    if bucket_name.startswith("gs://"):
+        bucket_name = bucket_name[5:]
     return storage.bucket(bucket_name, app=_firebase_app())
 
 

@@ -68,7 +68,7 @@ Khi web server khởi động, ứng dụng tự kiểm tra, tải nếu thiếu
 ```text
 FIREBASE_SERVICE_ACCOUNT=/home/khanh/.config/p3_cccd/firebase-service-account.json
 FIREBASE_PROJECT_ID=ten-project-firebase
-FIREBASE_STORAGE_BUCKET=ten-project-firebase.firebasestorage.app
+FIREBASE_STORAGE_BUCKET=cccd-pi3.firebasestorage.app
 FIRESTORE_COLLECTION=cccd_cards
 CCCD_ACCESS_COLLECTION=cccd_card_access
 CCCD_FACE_THRESHOLD=0.363
@@ -82,7 +82,7 @@ CCCD_DOOR_UNLOCK_SECONDS=3
 # CCCD_DOOR_RELAY_ACTIVE_HIGH=false
 ```
 
-`FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Điền đúng tên bucket đang hiện trong Firebase Console, không ghi tiền tố `gs://`; bucket cũ có thể kết thúc bằng `.appspot.com`. Giữ bucket ở chế độ riêng tư; web Pi tải ảnh qua API dùng cùng cơ chế đăng nhập của trang. Nếu chưa đặt bucket, dữ liệu chữ vẫn lưu được và ảnh vẫn dùng được trên Pi để xác thực, nhưng ảnh sẽ chưa xuất hiện trong lịch sử Firebase. Với servo, `CCCD_DOOR_GPIO_PIN` là chân tín hiệu theo số BCM; ví dụ BCM18 là chân vật lý 12. Servo quay tới `OPEN_ANGLE`, giữ số giây trong `CCCD_DOOR_UNLOCK_SECONDS`, rồi quay về `CLOSED_ANGLE`. Chỉnh hai góc theo cơ cấu cửa của bạn. Dùng nguồn phù hợp cho servo và nối chung GND với Raspberry Pi. Nếu dùng relay thay servo, đặt `CCCD_DOOR_ACTUATOR=relay` và cấu hình mức kích `CCCD_DOOR_RELAY_ACTIVE_HIGH`.
+`FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Mặc định ứng dụng dùng bucket `cccd-pi3.firebasestorage.app`; có thể đổi bằng `FIREBASE_STORAGE_BUCKET` trong `web.env`. Nếu nhập dạng `gs://bucket-name`, ứng dụng tự bỏ tiền tố `gs://`. Giữ bucket ở chế độ riêng tư; web Pi tải ảnh qua API dùng cùng cơ chế đăng nhập của trang. Nếu Firebase Storage chưa được tạo hoặc service account thiếu quyền ghi object, ảnh chưa xuất hiện trong lịch sử Firebase. Với servo, `CCCD_DOOR_GPIO_PIN` là chân tín hiệu theo số BCM; ví dụ BCM18 là chân vật lý 12. Servo quay tới `OPEN_ANGLE`, giữ số giây trong `CCCD_DOOR_UNLOCK_SECONDS`, rồi quay về `CLOSED_ANGLE`. Chỉnh hai góc theo cơ cấu cửa của bạn. Dùng nguồn phù hợp cho servo và nối chung GND với Raspberry Pi. Nếu dùng relay thay servo, đặt `CCCD_DOOR_ACTUATOR=relay` và cấu hình mức kích `CCCD_DOOR_RELAY_ACTIVE_HIGH`.
 
 Khóa MRZ được tạo tự động ở lần đăng ký thẻ đầu tiên; mặc định là `/home/khanh/.config/p3_cccd/mrz-encryption.key`. Tệp có quyền `0600`, không đưa vào Git hay đồng bộ deploy. Giữ nguyên khóa khi cập nhật code; nếu chuyển sang Pi khác, cần chuyển khóa an toàn cùng cấu hình service account.
 
