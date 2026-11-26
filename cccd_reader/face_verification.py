@@ -79,12 +79,38 @@ def _embedding(cv2, detector, recognizer, image, source: str):
         raise RuntimeError(f"Không tìm thấy khuôn mặt trong {source}.")
     if len(faces) != 1:
         raise RuntimeError(f"Cần đúng một khuôn mặt trong {source}.")
-    aligned = recognizer.alignCrop(image, faces[0])
-    return recognizer.feature(aligned)
+    face = faces[0]
+    aligned = recognizer.alignCrop(image, face)
+    landmarks = _face_landmarks(image, face)
+    return recognizer.feature(aligned), landmarks
+
+
+def _face_landmarks(image, face) -> dict[str, object]:
+    height, width = image.shape[:2]
+    points = [
+        [float(face[offset]), float(face[offset + 1])]
+        for offset in range(4, 14, 2)
+    ]
+    return {
+        "width": width,
+        "height": height,
+        "box": [float(value) for value in face[:4]],
+        "points": points,
+    }
 
 
 def compare_faces(card_photo: Path, camera_jpeg: bytes, threshold: float) -> tuple[float, bool]:
     """Trả về cosine similarity và kết quả so với ngưỡng đã cấu hình."""
+    score, matched, _landmarks = compare_faces_with_details(
+        card_photo, camera_jpeg, threshold
+    )
+    return score, matched
+
+
+def compare_faces_with_details(
+    card_photo: Path, camera_jpeg: bytes, threshold: float
+) -> tuple[float, bool, dict[str, dict[str, object]]]:
+    """So khớp khuôn mặt và trả thêm khung, mốc để giao diện hiển thị."""
     if not card_photo.is_file():
         raise RuntimeError("Không còn ảnh chân dung từ CCCD để đối chiếu. Hãy quét lại thẻ.")
 
@@ -102,9 +128,16 @@ def compare_faces(card_photo: Path, camera_jpeg: bytes, threshold: float) -> tup
             raise RuntimeError("Không giải mã được ảnh DG2 trên CCCD.") from exc
     live_image = _decode_image(cv2, camera_jpeg, "camera")
 
-    card_embedding = _embedding(cv2, detector, recognizer, card_image, "ảnh CCCD")
-    live_embedding = _embedding(cv2, detector, recognizer, live_image, "camera")
+    card_embedding, card_landmarks = _embedding(
+        cv2, detector, recognizer, card_image, "ảnh CCCD"
+    )
+    live_embedding, live_landmarks = _embedding(
+        cv2, detector, recognizer, live_image, "camera"
+    )
     score = float(
         recognizer.match(card_embedding, live_embedding, cv2.FaceRecognizerSF_FR_COSINE)
     )
-    return score, score >= threshold
+    return score, score >= threshold, {
+        "card": card_landmarks,
+        "camera": live_landmarks,
+    }

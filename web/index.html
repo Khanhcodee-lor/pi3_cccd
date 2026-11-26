@@ -67,6 +67,7 @@
     .camera-preview img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
     .face-guide { display: none; }
     .camera-preview.face-mode .face-guide { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .camera-preview.face-mode.face-landmarks-found .face-guide { display: none; }
     .face-guide-frame { position: relative; width: min(42%, 250px); height: 78%; border: 1px solid rgba(255,255,255,.72); border-radius: 10px; box-shadow: 0 0 0 999px rgba(4,20,17,.12); }
     .face-guide-frame::before, .face-guide-frame::after { display: none; }
     .face-guide-caption { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); padding: 5px 10px; border-radius: 999px; background: rgba(10,31,28,.78); color: white; font-size: .72rem; font-weight: 700; white-space: nowrap; }
@@ -180,6 +181,12 @@
     .face-dialog .face-compare-card { position: relative; z-index: 0; overflow: hidden; padding: 12px; border-color: #354346; background: #1a2426; }
     .face-dialog .face-reference { width: min(100%, 420px); height: clamp(300px, 48vh, 500px); margin-inline: auto; border: 1px solid #354346; background: #20282a; }
     .face-dialog .face-reference img { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
+    .face-landmark-overlay { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+    .face-landmark-box { fill: rgba(130, 190, 158, .035); stroke: #a1c6b3; stroke-width: 3px; vector-effect: non-scaling-stroke; }
+    .face-landmark-link { fill: none; stroke: #d5e8dc; stroke-width: 1.5px; opacity: .68; vector-effect: non-scaling-stroke; }
+    .face-landmark-point { stroke: #182120; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+    .face-dialog[data-match="true"] .face-landmark-box { stroke: #83c49d; }
+    .face-dialog[data-match="false"] .face-landmark-box { stroke: #d5ae70; }
     .face-dialog .face-reference-fallback { color: #aab7b4; }
     .face-dialog .face-compare-card .camera-preview { height: clamp(300px, 48vh, 500px); border-color: #354346; background: #20282a; }
     .face-dialog .face-compare-card .camera-preview img { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; }
@@ -376,12 +383,12 @@
         <div class="face-compare">
           <div class="face-compare-card">
             <div class="face-compare-title"><span>1</span>Ảnh chân dung CCCD</div>
-            <div class="face-reference"><img id="faceReferenceImage" alt="Ảnh chân dung trích từ CCCD" hidden><span class="face-reference-fallback" id="faceReferenceFallback">Chưa có ảnh chân dung trên thẻ.</span></div>
+            <div class="face-reference"><img id="faceReferenceImage" alt="Ảnh chân dung trích từ CCCD" hidden><svg class="face-landmark-overlay" id="cardFaceOverlay" aria-hidden="true" viewBox="0 0 1000 1000"></svg><span class="face-reference-fallback" id="faceReferenceFallback">Chưa có ảnh chân dung trên thẻ.</span></div>
           </div>
           <div class="face-compare-card">
             <div class="face-compare-title"><span>2</span>Camera trực tiếp</div>
             <div id="facePreviewSlot"></div>
-            <p class="face-compare-note">Camera nên đặt ngang tầm mắt, gần đầu đọc. Đứng đối diện và nhìn thẳng.</p>
+            <p class="face-compare-note">Khung bao khuôn mặt; các chấm cùng màu là cùng mốc mắt, mũi và khóe miệng.</p>
           </div>
         </div>
         <div class="face-result" id="faceVerificationState" role="status" aria-live="polite">Sau khi đọc thẻ, camera sẽ tự bật và bắt đầu xác thực.</div>
@@ -395,7 +402,7 @@
         <div><span class="step-kicker">Bước 1 · Quét mã MRZ</span><h2 id="mrzCameraTitle">Đưa mặt sau CCCD vào khung</h2><p>Để thẻ cách camera khoảng 15–25 cm, đủ sáng và giữ yên. Nếu hình vẫn mờ, Camera V2 cần chỉnh nét ống kính bằng tay.</p></div>
         <button type="button" class="camera-dialog-close" id="closeMrzCameraButton">Tắt camera</button>
       </div>
-      <div id="mrzCameraPreviewSlot"><div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ camera Pi"><div class="face-guide" aria-hidden="true"><span class="face-guide-frame"></span><span class="face-guide-caption">Căn giữa khuôn mặt</span></div><div class="document-guide" aria-hidden="true"><span class="document-guide-frame"></span><span class="document-guide-caption">Đặt mặt sau CCCD vào khung</span></div></div></div>
+      <div id="mrzCameraPreviewSlot"><div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ camera Pi"><svg class="face-landmark-overlay" id="liveFaceOverlay" aria-hidden="true" viewBox="0 0 1000 1000"></svg><div class="face-guide" aria-hidden="true"><span class="face-guide-frame"></span><span class="face-guide-caption">Căn giữa khuôn mặt</span></div><div class="document-guide" aria-hidden="true"><span class="document-guide-frame"></span><span class="document-guide-caption">Đặt mặt sau CCCD vào khung</span></div></div></div>
       <div class="camera-dialog-status" id="mrzCameraStatus" role="status" aria-live="polite">Đang chờ hình từ camera Pi…</div>
     </section>
   </div>
@@ -415,6 +422,8 @@
     const faceReferenceImage = document.getElementById('faceReferenceImage');
     const faceReferenceFallback = document.getElementById('faceReferenceFallback');
     const faceVerificationState = document.getElementById('faceVerificationState');
+    const cardFaceOverlay = document.getElementById('cardFaceOverlay');
+    const liveFaceOverlay = document.getElementById('liveFaceOverlay');
     const facePreviewSlot = document.getElementById('facePreviewSlot');
     const faceDialog = document.getElementById('faceDialog');
     const faceDialogOpenButton = document.getElementById('faceDialogOpenButton');
@@ -476,6 +485,60 @@
       cameraImage.removeAttribute('src');
       if (cameraFrameUrl) URL.revokeObjectURL(cameraFrameUrl);
       cameraFrameUrl = null;
+    }
+
+    function clearFaceLandmarks() {
+      cardFaceOverlay.replaceChildren();
+      liveFaceOverlay.replaceChildren();
+      cameraPreview.classList.remove('face-landmarks-found');
+      faceDialog.dataset.match = '';
+    }
+
+    function drawFaceLandmarks(svg, face) {
+      svg.replaceChildren();
+      if (!face) return;
+      const width = Number(face.width);
+      const height = Number(face.height);
+      const box = Array.isArray(face.box) ? face.box.map(Number) : [];
+      const points = Array.isArray(face.points) ? face.points : [];
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0
+        || box.length < 4 || !box.every(Number.isFinite) || points.length !== 5) return;
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('class', 'face-landmark-box');
+      rect.setAttribute('x', String(box[0]));
+      rect.setAttribute('y', String(box[1]));
+      rect.setAttribute('width', String(box[2]));
+      rect.setAttribute('height', String(box[3]));
+      svg.append(rect);
+
+      const validPoints = points.map((point) => Array.isArray(point) ? point.map(Number) : []);
+      if (validPoints.some((point) => point.length < 2 || !point.every(Number.isFinite))) return;
+      const links = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      links.setAttribute('class', 'face-landmark-link');
+      links.setAttribute('points', [0, 1, 2, 4, 3].map((index) => validPoints[index].join(',')).join(' '));
+      svg.append(links);
+
+      const colors = ['#93c9a7', '#d4b46f', '#e8e6d2', '#d99291', '#91afd1'];
+      const radius = Math.max(4, Math.min(width, height) * .014);
+      validPoints.forEach(([x, y], index) => {
+        const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        point.setAttribute('class', 'face-landmark-point');
+        point.setAttribute('cx', String(x));
+        point.setAttribute('cy', String(y));
+        point.setAttribute('r', String(radius));
+        point.setAttribute('fill', colors[index]);
+        svg.append(point);
+      });
+    }
+
+    function showFaceLandmarks(landmarks, matched) {
+      drawFaceLandmarks(cardFaceOverlay, landmarks && landmarks.card);
+      drawFaceLandmarks(liveFaceOverlay, landmarks && landmarks.camera);
+      cameraPreview.classList.toggle('face-landmarks-found', liveFaceOverlay.childElementCount > 0);
+      faceDialog.dataset.match = matched ? 'true' : 'false';
     }
 
     function showMrzCameraOverlay(message) {
@@ -861,6 +924,8 @@
       cccdSaved = false;
       canVerifyFace = false;
       faceDialogRecordId = null;
+      clearCameraPreview();
+      clearFaceLandmarks();
       result.style.display = 'none';
       emptyState.style.display = 'grid';
       updateFaceControls();
@@ -1010,7 +1075,10 @@
       if (faceVerificationTimer) clearTimeout(faceVerificationTimer);
       faceVerificationTimer = null;
       cameraPreview.classList.remove('face-mode');
-      if (!preserveFrame) clearCameraPreview();
+      if (!preserveFrame) {
+        clearCameraPreview();
+        clearFaceLandmarks();
+      }
       faceDialog.dataset.scanning = 'false';
       await fetch('/api/face/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
       updateFaceControls();
@@ -1020,6 +1088,7 @@
       if (faceCameraActive) return;
       if (!canVerifyFace) return;
       openFaceDialog();
+      clearFaceLandmarks();
       automaticFaceVerification = true;
       faceCameraButton.disabled = true;
       try {
@@ -1121,6 +1190,7 @@
     async function runFaceVerification() {
       if (faceVerificationInFlight || !canVerifyFace || !faceCameraActive || !faceCameraReady) return;
       faceVerificationInFlight = true;
+      clearFaceLandmarks();
       setStatus({ status: 'verifying_face', message: 'Camera Pi đang tự so khớp khuôn mặt với ảnh CCCD…' });
       try {
         const response = await fetch('/api/face/verify', {
@@ -1131,6 +1201,7 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không xác thực được khuôn mặt.');
+        if (payload.landmarks) showFaceLandmarks(payload.landmarks, Boolean(payload.matched));
         const status = payload.status || (payload.unlocked ? 'door_opened' : payload.matched ? 'face_matched' : 'face_mismatch');
         setStatus({ status, message: payload.message });
         if (payload.unlocked || payload.matched) {

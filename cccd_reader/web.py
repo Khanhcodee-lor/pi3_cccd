@@ -402,13 +402,14 @@ class WebHandler(BaseHTTPRequestHandler):
         elif path == "/api/face/verify":
             photo_path = None
             score = None
+            landmarks = None
             try:
                 photo_path = self.server.scan_manager.begin_face_verification()
                 frame, age = self.server.webcam_manager.frame_snapshot()
                 if frame is None or age is None or age > 2.0:
                     raise RuntimeError("Chưa có khung hình webcam mới. Bật camera xác thực và thử lại.")
 
-                from .face_verification import compare_faces
+                from .face_verification import compare_faces_with_details
 
                 try:
                     threshold = float(os.environ.get("CCCD_FACE_THRESHOLD", "0.363"))
@@ -417,13 +418,21 @@ class WebHandler(BaseHTTPRequestHandler):
                 if not 0 < threshold <= 1:
                     raise RuntimeError("CCCD_FACE_THRESHOLD cần nằm trong khoảng lớn hơn 0 đến 1.")
 
-                score, matched = compare_faces(photo_path, frame, threshold)
+                score, matched, landmarks = compare_faces_with_details(
+                    photo_path, frame, threshold
+                )
                 if not matched:
                     message = f"Khuôn mặt chưa khớp với ảnh CCCD (điểm {score:.3f}). Hãy thử lại."
                     self.server.scan_manager.finish_face_verification(
                         status="face_mismatch", message=message, score=score
                     )
-                    self._send_json(200, {"matched": False, "unlocked": False, "score": score, "message": message})
+                    self._send_json(200, {
+                        "matched": False,
+                        "unlocked": False,
+                        "score": score,
+                        "landmarks": landmarks,
+                        "message": message,
+                    })
                     return
 
                 match_message = f"Khuôn mặt đã khớp (điểm {score:.3f})."
@@ -444,6 +453,7 @@ class WebHandler(BaseHTTPRequestHandler):
                             "unlocked": False,
                             "status": "face_matched",
                             "score": score,
+                            "landmarks": landmarks,
                             "message": message,
                         },
                     )
@@ -460,6 +470,7 @@ class WebHandler(BaseHTTPRequestHandler):
                         "unlocked": True,
                         "status": "door_opened",
                         "score": score,
+                        "landmarks": landmarks,
                         "message": message,
                     },
                 )
