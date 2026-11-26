@@ -271,7 +271,8 @@
       .face-dialog .verification-step { padding: 7px 9px; }
       .face-dialog .face-compare { grid-template-columns: 1fr; gap: 10px; }
       .face-dialog .face-compare-card:last-child { order: -1; }
-      .face-dialog .face-reference { height: clamp(140px, 22vh, 190px); min-height: 140px; }
+      .face-dialog .face-reference { height: min(36vh, 280px); min-height: 220px; }
+      .face-dialog .face-reference img { object-fit: contain; }
       .face-dialog .face-compare-card .camera-preview { height: auto; aspect-ratio: 4 / 3; }
     }
     @media (max-width: 460px) {
