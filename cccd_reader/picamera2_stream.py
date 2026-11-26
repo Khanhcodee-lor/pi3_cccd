@@ -34,10 +34,12 @@ def main() -> int:
         tuning_noir = "/usr/share/libcamera/ipa/rpi/vc4/imx219_noir.json"
         camera = Picamera2(tuning=tuning_noir) if os.path.isfile(tuning_noir) else Picamera2()
         configuration = camera.create_video_configuration(
-            main={"size": (1280, 720), "format": "RGB888"}
+            # Keep the Camera Module v2's native 4:3 framing and enough pixels
+            # for the small MRZ characters at normal card-reading distance.
+            main={"size": (1640, 1232), "format": "RGB888"}
         )
         camera.configure(configuration)
-        camera.start_recording(JpegEncoder(q=75), FileOutput(jpeg_stream))
+        camera.start_recording(JpegEncoder(q=90), FileOutput(jpeg_stream))
         recording = True
 
         while not _STOP.wait(0.5):
