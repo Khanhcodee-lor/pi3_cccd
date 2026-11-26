@@ -14,7 +14,7 @@ python3 -m venv .venv
 
 ## Web server xem thông tin thẻ
 
-Web app chạy trên Pi và dùng đầu đọc NFC đang cắm USB. Quy trình web tách thành ba màn hình: đọc mã MRZ, quét chip NFC và lưu Firebase, rồi xem thông tin thẻ và xác thực khuôn mặt. Khi quét, trang hiển thị các trường trong MRZ và ảnh chân dung nếu trình duyệt hỗ trợ định dạng ảnh trên thẻ. BAC yêu cầu MRZ key info gồm đúng 24 ký tự. Có thể nhập mã bằng tay, bật Camera Module v2 cắm cáp CSI để xem trước và tự nhận diện MRZ, hoặc chọn ảnh mặt sau CCCD. Camera CSI mặc định chạy bằng Picamera2 qua libcamera; helper dùng Python hệ thống nên không cần tạo lại `.venv`. OCR chạy trên Pi, kiểm tra ba check digit ICAO rồi điền mã vào ô để người dùng xem lại trước khi quét NFC. Camera tự tắt sau hai phút; ảnh webcam chỉ nằm tạm trong bộ nhớ khi xử lý. Giữ nguyên ký tự `<`, bỏ khoảng trắng.
+Web app chạy trên Pi và dùng đầu đọc NFC đang cắm USB. Thẻ đã đăng ký được nhận diện qua mã NFC; Pi tra MRZ đã mã hóa trong Firebase rồi đọc chip và xác thực khuôn mặt. Thẻ mới cần đăng ký một lần bằng ảnh mặt sau chụp từ điện thoại hoặc nhập MRZ thủ công. OCR chạy trên Pi và kiểm tra check digit ICAO; ảnh điện thoại chỉ được xử lý tạm thời. BAC yêu cầu MRZ key info gồm đúng 24 ký tự; giữ nguyên ký tự `<`, bỏ khoảng trắng.
 
 Cài Picamera2 cho Camera Module v2, Tesseract OCR và công cụ webcam USB:
 
@@ -41,13 +41,13 @@ systemctl --user enable --now cccd-web.service
 systemctl --user status cccd-web.service
 ```
 
-Mở `http://192.168.1.116:8000` trên thiết bị cùng mạng với Pi; đăng nhập với tên `cccd` và mật khẩu vừa tạo. Nếu IP Pi thay đổi, xem địa chỉ mới bằng `hostname -I`. Trang hiển thị dữ liệu cá nhân, nên chỉ dùng trên mạng tin cậy và không mở port này ra Internet. MRZ key info không được lưu vào trình duyệt hoặc log; ảnh trích xuất được lưu trong `output/avatar.jpg` hoặc `output/avatar.jp2`.
+Mở `http://192.168.1.116:8000` trên thiết bị cùng mạng với Pi; đăng nhập với tên `cccd` và mật khẩu vừa tạo. Nếu IP Pi thay đổi, xem địa chỉ mới bằng `hostname -I`. Trang hiển thị dữ liệu cá nhân, nên chỉ dùng trên mạng tin cậy và không mở port này ra Internet. MRZ key info không được lưu trong trình duyệt hoặc log. Firebase lưu MRZ ở dạng mã hóa; khóa giải mã chỉ nằm trên Pi tại `~/.config/p3_cccd/mrz-encryption.key`. Hãy sao lưu an toàn tệp khóa này; mất khóa thì cần đăng ký lại MRZ cho các thẻ. Ảnh trích xuất được lưu trong `output/avatar.jpg` hoặc `output/avatar.jp2`.
 
 Sau khi service được cài, workflow triển khai sẽ tự khởi động lại web server mỗi lần đồng bộ code lên Pi.
 
 ## Lưu CCCD lên Firebase và xác thực để mở cửa
 
-Sau khi quét NFC thành công, server lưu các trường họ tên, số giấy tờ, giới tính, ngày sinh, quốc tịch, ngày hết hạn và loại giấy tờ vào **Cloud Firestore**; ảnh chân dung DG2 được tải lên **Cloud Storage for Firebase**. Firestore chỉ lưu đường dẫn nội bộ tới ảnh, không tạo URL công khai. MRZ thô không được tải lên Firebase. Ảnh vẫn được giữ cục bộ trong `output/` để đối chiếu khuôn mặt.
+Sau khi quét NFC thành công, server lưu các trường họ tên, số giấy tờ, giới tính, ngày sinh, quốc tịch, ngày hết hạn và loại giấy tờ vào **Cloud Firestore**; ảnh chân dung DG2 được tải lên **Cloud Storage for Firebase**. Firestore chỉ lưu đường dẫn nội bộ tới ảnh, không tạo URL công khai. Khi đăng ký thẻ, Firestore lưu mã NFC đã băm và MRZ đã mã hóa trong collection `cccd_card_access`; MRZ dạng chữ thường không được gửi lên Firebase. Khóa AES-GCM được tạo riêng trên Pi và giữ ngoài repo. Ảnh vẫn được giữ cục bộ trong `output/` để đối chiếu khuôn mặt.
 
 ### Cấu hình Firebase
 
@@ -70,6 +70,7 @@ FIREBASE_SERVICE_ACCOUNT=/home/khanh/.config/p3_cccd/firebase-service-account.js
 FIREBASE_PROJECT_ID=ten-project-firebase
 FIREBASE_STORAGE_BUCKET=ten-project-firebase.firebasestorage.app
 FIRESTORE_COLLECTION=cccd_cards
+CCCD_ACCESS_COLLECTION=cccd_card_access
 CCCD_FACE_THRESHOLD=0.363
 CCCD_DOOR_ACTUATOR=servo
 CCCD_DOOR_GPIO_PIN=18
@@ -83,6 +84,8 @@ CCCD_DOOR_UNLOCK_SECONDS=3
 
 `FIREBASE_PROJECT_ID` là tùy chọn nếu JSON đã có project ID. Điền đúng tên bucket đang hiện trong Firebase Console, không ghi tiền tố `gs://`; bucket cũ có thể kết thúc bằng `.appspot.com`. Giữ bucket ở chế độ riêng tư; web Pi tải ảnh qua API dùng cùng cơ chế đăng nhập của trang. Nếu chưa đặt bucket, dữ liệu chữ vẫn lưu được và ảnh vẫn dùng được trên Pi để xác thực, nhưng ảnh sẽ chưa xuất hiện trong lịch sử Firebase. Với servo, `CCCD_DOOR_GPIO_PIN` là chân tín hiệu theo số BCM; ví dụ BCM18 là chân vật lý 12. Servo quay tới `OPEN_ANGLE`, giữ số giây trong `CCCD_DOOR_UNLOCK_SECONDS`, rồi quay về `CLOSED_ANGLE`. Chỉnh hai góc theo cơ cấu cửa của bạn. Dùng nguồn phù hợp cho servo và nối chung GND với Raspberry Pi. Nếu dùng relay thay servo, đặt `CCCD_DOOR_ACTUATOR=relay` và cấu hình mức kích `CCCD_DOOR_RELAY_ACTIVE_HIGH`.
 
+Khóa MRZ được tạo tự động ở lần đăng ký thẻ đầu tiên; mặc định là `/home/khanh/.config/p3_cccd/mrz-encryption.key`. Tệp có quyền `0600`, không đưa vào Git hay đồng bộ deploy. Giữ nguyên khóa khi cập nhật code; nếu chuyển sang Pi khác, cần chuyển khóa an toàn cùng cấu hình service account.
+
 Ngưỡng `0.363` là điểm bắt đầu theo demo SFace của OpenCV Zoo; cần hiệu chỉnh bằng camera thực tế và dữ liệu có sự đồng ý trước khi dùng. Ngưỡng cao hơn chặt hơn nhưng có thể từ chối đúng người. Sau khi cấu hình, khởi động lại service:
 
 ```bash
@@ -93,9 +96,9 @@ systemctl --user restart cccd-web.service
 
 ### Luồng hoạt động
 
-1. Đọc CCCD qua NFC và ghi dữ liệu vào Firestore. Nếu Firebase ghi lỗi, lượt quét báo lỗi và không thể xác thực/mở cửa.
-2. Bật camera xác thực, nhìn thẳng vào camera rồi chọn **Xác thực và mở cửa**.
-3. Server so ảnh khuôn mặt webcam với ảnh DG2 của thẻ vừa quét. Trang báo rõ khi khuôn mặt đã khớp; chỉ khi điểm vượt ngưỡng mới điều khiển servo hoặc phát xung relay. Mỗi lượt quét chỉ mở cửa một lần và hết hạn sau 5 phút.
+1. Mở trang web và đưa thẻ đã đăng ký vào đầu đọc. Pi đọc mã NFC, tìm MRZ đã mã hóa trong Firebase, rồi dùng MRZ đó xác thực BAC.
+2. Với thẻ mới, trang báo cần đăng ký. Mở cùng địa chỉ web trên điện thoại, chụp/chọn ảnh rõ mặt sau CCCD; Pi đọc MRZ, đọc chip và lưu liên kết mã NFC–MRZ mã hóa. Nếu đầu đọc không lấy được UID của CCCD, giao diện báo rõ rằng không thể tự nhận lại thẻ ở lần sau.
+3. Pi lưu thông tin và ảnh DG2, sau đó tự bật camera xác thực khuôn mặt. Khi xác thực xong, đầu đọc tự quay lại chờ thẻ tiếp theo. Mỗi lượt quét chỉ mở cửa một lần và hết hạn sau 5 phút.
 
 Đây là bản đối chiếu khuôn mặt 1:1, chưa có kiểm tra người thật/chống giả mạo; ảnh hoặc video phát lại có thể đánh lừa hệ thống. Không dùng nó làm lớp bảo vệ duy nhất cho khu vực cần an ninh cao. Web server hiện dùng HTTP và Basic Auth, vì vậy chỉ truy cập qua mạng tin cậy, không mở trực tiếp ra Internet.
 
