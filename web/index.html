@@ -177,18 +177,17 @@
     .face-dialog .face-compare-title { color: #e7ecea; }
     .face-dialog .verification-step small,
     .face-dialog .face-compare-note { color: #aab7b4; }
-    .face-dialog .face-compare { position: relative; isolation: isolate; overflow: hidden; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+    .face-dialog .face-compare { position: relative; isolation: isolate; overflow: hidden; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 0; }
     .face-dialog .face-compare-card { position: relative; z-index: 0; overflow: hidden; padding: 12px; border-color: #354346; background: #1a2426; }
-    .face-dialog .face-reference { width: min(100%, 420px); height: clamp(300px, 48vh, 500px); margin-inline: auto; border: 1px solid #354346; background: #20282a; }
+    .face-dialog .face-reference { width: min(100%, 420px); height: clamp(260px, 42vh, 420px); margin-inline: auto; border: 1px solid #354346; background: #20282a; }
     .face-dialog .face-reference img { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
     .face-landmark-overlay { position: absolute; z-index: 4; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
     .face-landmark-box { fill: rgba(130, 190, 158, .035); stroke: #a1c6b3; stroke-width: 3px; vector-effect: non-scaling-stroke; }
-    .face-landmark-link { fill: none; stroke: #d5e8dc; stroke-width: 1.5px; opacity: .68; vector-effect: non-scaling-stroke; }
-    .face-landmark-point { stroke: #182120; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+    .face-landmark-point { fill: #a6d4b4; stroke: #f2f5f0; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
     .face-dialog[data-match="true"] .face-landmark-box { stroke: #83c49d; }
     .face-dialog[data-match="false"] .face-landmark-box { stroke: #d5ae70; }
     .face-dialog .face-reference-fallback { color: #aab7b4; }
-    .face-dialog .face-compare-card .camera-preview { height: clamp(300px, 48vh, 500px); border-color: #354346; background: #20282a; }
+    .face-dialog .face-compare-card .camera-preview { height: clamp(260px, 42vh, 420px); border-color: #354346; background: #20282a; }
     .face-dialog .face-compare-card .camera-preview img { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; }
     .face-dialog .face-compare-note { min-height: 1.4em; }
     .face-dialog[data-scanning="true"] .face-reference::after,
@@ -375,20 +374,15 @@
         <button type="button" class="face-dialog-close" id="faceDialogCloseButton">Thu nhỏ</button>
       </header>
       <div class="verification" id="verification" hidden>
-        <div class="verification-steps" aria-label="Cách xác thực">
-          <div class="verification-step"><span>1</span><div><strong>Ảnh trên CCCD</strong><small>Ảnh bên trái được đọc từ chip.</small></div></div>
-          <div class="verification-step"><span>2</span><div><strong>Đứng trước camera Pi</strong><small>Đặt camera ngang tầm mắt, gần đầu đọc thẻ.</small></div></div>
-          <div class="verification-step"><span>3</span><div><strong>Chờ xác thực tự động</strong><small>Chốt cửa chỉ mở khi khuôn mặt khớp ảnh CCCD.</small></div></div>
-        </div>
         <div class="face-compare">
           <div class="face-compare-card">
-            <div class="face-compare-title"><span>1</span>Ảnh chân dung CCCD</div>
+            <div class="face-compare-title">Ảnh chân dung CCCD</div>
             <div class="face-reference"><img id="faceReferenceImage" alt="Ảnh chân dung trích từ CCCD" hidden><svg class="face-landmark-overlay" id="cardFaceOverlay" aria-hidden="true" viewBox="0 0 1000 1000"></svg><span class="face-reference-fallback" id="faceReferenceFallback">Chưa có ảnh chân dung trên thẻ.</span></div>
           </div>
           <div class="face-compare-card">
-            <div class="face-compare-title"><span>2</span>Camera trực tiếp</div>
+            <div class="face-compare-title">Camera Pi · trực tiếp</div>
             <div id="facePreviewSlot"></div>
-            <p class="face-compare-note">Khung bao khuôn mặt; các chấm cùng màu là cùng mốc mắt, mũi và khóe miệng.</p>
+            <p class="face-compare-note">Khung bao mặt; các chấm đánh dấu hai mắt, mũi và hai khóe miệng mà model phát hiện.</p>
           </div>
         </div>
         <div class="face-result" id="faceVerificationState" role="status" aria-live="polite">Sau khi đọc thẻ, camera sẽ tự bật và bắt đầu xác thực.</div>
@@ -516,20 +510,13 @@
 
       const validPoints = points.map((point) => Array.isArray(point) ? point.map(Number) : []);
       if (validPoints.some((point) => point.length < 2 || !point.every(Number.isFinite))) return;
-      const links = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      links.setAttribute('class', 'face-landmark-link');
-      links.setAttribute('points', [0, 1, 2, 4, 3].map((index) => validPoints[index].join(',')).join(' '));
-      svg.append(links);
-
-      const colors = ['#93c9a7', '#d4b46f', '#e8e6d2', '#d99291', '#91afd1'];
       const radius = Math.max(4, Math.min(width, height) * .014);
-      validPoints.forEach(([x, y], index) => {
+      validPoints.forEach(([x, y]) => {
         const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         point.setAttribute('class', 'face-landmark-point');
         point.setAttribute('cx', String(x));
         point.setAttribute('cy', String(y));
         point.setAttribute('r', String(radius));
-        point.setAttribute('fill', colors[index]);
         svg.append(point);
       });
     }
