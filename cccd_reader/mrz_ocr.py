@@ -14,7 +14,11 @@ from pathlib import Path
 
 
 _ALLOWED = re.compile(r"[^A-Z0-9<]")
-_DIGIT_FIXES = str.maketrans({"O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2", "S": "5", "B": "8"})
+_DIGIT_FIXES = str.maketrans({
+    "O": "0", "Q": "0", "D": "0",
+    "I": "1", "L": "1",
+    "Z": "2", "E": "3", "A": "4", "S": "5", "G": "6", "T": "7", "B": "8",
+})
 
 
 def _check_digit(value: str) -> str:
@@ -46,10 +50,23 @@ def _mrz_rows(text: str) -> list[str]:
     return rows
 
 
-def _key_from_text(text: str) -> str | None:
+def _first_mrz_row(row: str) -> str | None:
+    """Repair common OCR confusions in the fixed TD1 document-code prefix."""
+    if len(row) < 2 or row[0] not in "I1L" or row[1] not in "D0OQ":
+        return None
+    return "ID" + row[2:]
+
+
+def _key_from_text(text: str, diagnostics: dict[str, bool] | None = None) -> str | None:
     rows = _mrz_rows(text)
-    first_rows = [row for row in rows if row.startswith(("ID", "1D")) and len(row) >= 28]
+    first_rows = [
+        fixed for row in rows if len(row) >= 28
+        if (fixed := _first_mrz_row(row)) is not None
+    ]
     second_rows = [row for row in rows if len(row) >= 28 and row[:6].translate(_DIGIT_FIXES).isdigit()]
+    if diagnostics is not None:
+        diagnostics["first_row"] = diagnostics.get("first_row", False) or bool(first_rows)
+        diagnostics["second_row"] = diagnostics.get("second_row", False) or bool(second_rows)
 
     for first in first_rows:
         for second in second_rows:
@@ -75,6 +92,8 @@ def _key_from_text(text: str) -> str | None:
                     # check digits before returning a key.
                     if document.isalnum():
                         document = _normalized_digits(document)
+                    if diagnostics is not None and document.isdigit():
+                        diagnostics["key_fields"] = True
                     if (
                         document.isdigit()
                         and document_check.isdigit()
@@ -85,6 +104,8 @@ def _key_from_text(text: str) -> str | None:
                         and _check_digit(expiry) == expiry_check
                     ):
                         return document + document_check + birth + birth_check + expiry + expiry_check
+                    if diagnostics is not None and document.isdigit():
+                        diagnostics["check_digit_mismatch"] = True
     return None
 
 
@@ -116,11 +137,12 @@ def _ocr(
 
     for angle in rotations:
         oriented = image.rotate(angle, expand=True) if angle else image
-        # In live mode the MRZ is expected along the lower edge of a horizontal card.
+        # The MRZ sits near the lower edge of a horizontal CCCD. Include a
+        # little more than half the card so framing/cropping does not cut row 1.
         crops = (
             [oriented.crop((0, oriented.height * 2 // 5, oriented.width, oriented.height))]
             if fast
-            else [oriented, oriented.crop((0, oriented.height // 2, oriented.width, oriented.height))]
+            else [oriented, oriented.crop((0, oriented.height * 2 // 5, oriented.width, oriented.height))]
         )
         for crop_index, crop in enumerate(crops):
             gray = ImageOps.autocontrast(ImageOps.grayscale(crop))
@@ -139,36 +161,80 @@ def _ocr(
             elif gray.width > 2600:
                 ratio = 2600 / gray.width
                 gray = gray.resize((2600, int(gray.height * ratio)), Image.Resampling.LANCZOS)
-            source = BytesIO()
-            gray.save(source, format="PNG")
-            modes = (6,) if fast or crop_index == 0 else (6, 11)
-            for psm in modes:
-                try:
-                    result = subprocess.run(
-                        [executable, "stdin", "stdout", "--psm", str(psm), "-c", "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<"],
-                        input=source.getvalue(),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.DEVNULL,
-                        timeout=5 if fast else 10,
-                        check=False,
-                    )
-                except subprocess.TimeoutExpired:
-                    continue
-                except OSError as exc:
-                    raise RuntimeError("Không khởi chạy được Tesseract OCR trên Pi.") from exc
-                if result.returncode == 0:
-                    yield result.stdout.decode("utf-8", errors="ignore")
+
+            # Tesseract can miss small MRZ glyphs when a phone photo contains
+            # the whole card. Try the normal grayscale image, then a sharpened
+            # and a high-contrast version of the lower MRZ area.
+            variants = [gray]
+            if not fast and crop_index == 1:
+                from PIL import ImageFilter
+
+                variants.extend((
+                    gray.filter(ImageFilter.UnsharpMask(radius=1.2, percent=150, threshold=3)),
+                    gray.point(lambda value: 255 if value >= 155 else 0),
+                ))
+            for variant_index, variant in enumerate(variants):
+                # A narrow white border helps Tesseract segment text from a
+                # tightly cropped MRZ band.
+                border = max(12, variant.height // 30) if not fast else 0
+                if border:
+                    padded = Image.new("L", (variant.width + border * 2, variant.height + border * 2), 255)
+                    padded.paste(variant, (border, border))
+                    variant = padded
+                source = BytesIO()
+                variant.save(source, format="PNG")
+                if fast:
+                    modes = (6,)
+                elif crop_index == 0:
+                    modes = (6,)
+                elif variant_index == 0:
+                    modes = (6, 7, 11)
+                else:
+                    modes = (6,)
+                for psm in modes:
+                    try:
+                        result = subprocess.run(
+                            [
+                                executable, "stdin", "stdout", "-l", "eng", "--psm", str(psm),
+                                "-c", "load_system_dawg=0", "-c", "load_freq_dawg=0",
+                                "-c", "tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<",
+                            ],
+                            input=source.getvalue(),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL,
+                            timeout=5 if fast else 10,
+                            check=False,
+                        )
+                    except subprocess.TimeoutExpired:
+                        continue
+                    except OSError as exc:
+                        raise RuntimeError("Không khởi chạy được Tesseract OCR trên Pi.") from exc
+                    if result.returncode == 0:
+                        yield result.stdout.decode("utf-8", errors="ignore")
 
 
 def read_mrz_key(image_bytes: bytes) -> str:
     """Đọc MRZ key info 24 ký tự từ ảnh; từ chối nếu check digit không khớp."""
     if not image_bytes:
         raise ValueError("Chưa nhận được ảnh.")
+    outputs: list[str] = []
+    diagnostics: dict[str, bool] = {}
     for output in _ocr(image_bytes):
-        key = _key_from_text(output)
+        outputs.append(output)
+        key = _key_from_text("\n".join(outputs), diagnostics)
         if key:
             return key
-    raise ValueError("Chưa đọc chắc được MRZ. Hãy chụp thẳng, đủ sáng và để rõ cả 2 dòng đầu của mã MRZ.")
+    if diagnostics.get("key_fields") or diagnostics.get("check_digit_mismatch"):
+        raise ValueError(
+            "Đã nhận ra vùng MRZ nhưng chữ/số chưa đủ chắc để qua kiểm tra. Hãy chụp gần hơn, tránh lóa và để thẻ chiếm gần hết khung hình."
+        )
+    if diagnostics.get("first_row") or diagnostics.get("second_row"):
+        raise ValueError(
+            "Ảnh mới nhận ra được một dòng MRZ. Hãy đặt trọn mặt sau CCCD nằm ngang trong ảnh, thấy rõ ít nhất hai dòng đầu."
+        )
+    raise ValueError(
+        "Chưa tìm thấy vùng MRZ trong ảnh. Hãy chụp mặt sau gần hơn, nằm ngang, không lóa và để cả ba dòng MRZ trong ảnh."
+    )
 
 
 def capture_camera_image() -> bytes:
