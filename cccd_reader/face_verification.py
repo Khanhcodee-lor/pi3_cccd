@@ -3,23 +3,41 @@
 from __future__ import annotations
 
 import os
-from functools import lru_cache
 from pathlib import Path
+import threading
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DETECTOR = PROJECT_ROOT / "models" / "face_detection_yunet_2023mar.onnx"
 DEFAULT_RECOGNIZER = PROJECT_ROOT / "models" / "face_recognition_sface_2021dec.onnx"
+_MODEL_LOCK = threading.Lock()
+_MODEL_CACHE = None
 
 
-@lru_cache(maxsize=1)
 def _load_models():
+    global _MODEL_CACHE
+    if _MODEL_CACHE is not None:
+        return _MODEL_CACHE
+
+    with _MODEL_LOCK:
+        if _MODEL_CACHE is not None:
+            return _MODEL_CACHE
+
     detector_model = Path(os.environ.get("CCCD_FACE_DETECTOR_MODEL", DEFAULT_DETECTOR)).expanduser()
     recognizer_model = Path(os.environ.get("CCCD_FACE_RECOGNIZER_MODEL", DEFAULT_RECOGNIZER)).expanduser()
+    if detector_model == DEFAULT_DETECTOR or recognizer_model == DEFAULT_RECOGNIZER:
+        try:
+            from .download_face_models import ensure_models
+
+            ensure_models()
+        except Exception as exc:
+            raise RuntimeError(
+                "Không tự tải được model nhận diện khuôn mặt. Pi cần có Internet; "
+                f"hãy thử lại sau. Chi tiết: {exc}"
+            ) from exc
+
     if not detector_model.is_file() or not recognizer_model.is_file():
-        raise RuntimeError(
-            "Chưa có model nhận diện khuôn mặt. Chạy: "
-            ".venv/bin/python -m cccd_reader.download_face_models"
-        )
+        missing = [str(path) for path in (detector_model, recognizer_model) if not path.is_file()]
+        raise RuntimeError(f"Không tìm thấy model nhận diện khuôn mặt: {', '.join(missing)}")
 
     try:
         import cv2
@@ -29,11 +47,20 @@ def _load_models():
     if not hasattr(cv2, "FaceDetectorYN_create") or not hasattr(cv2, "FaceRecognizerSF_create"):
         raise RuntimeError("OpenCV hiện tại thiếu FaceDetectorYN/FaceRecognizerSF; hãy cài opencv-contrib-python-headless.")
 
-    detector = cv2.FaceDetectorYN_create(
-        str(detector_model), "", (320, 320), 0.8, 0.3, 5000
-    )
-    recognizer = cv2.FaceRecognizerSF_create(str(recognizer_model), "")
-    return cv2, detector, recognizer
+    with _MODEL_LOCK:
+        if _MODEL_CACHE is not None:
+            return _MODEL_CACHE
+        detector = cv2.FaceDetectorYN_create(
+            str(detector_model), "", (320, 320), 0.8, 0.3, 5000
+        )
+        recognizer = cv2.FaceRecognizerSF_create(str(recognizer_model), "")
+        _MODEL_CACHE = cv2, detector, recognizer
+        return _MODEL_CACHE
+
+
+def preload_face_models() -> None:
+    """Tải và nạp model vào bộ nhớ để sẵn sàng xác thực."""
+    _load_models()
 
 
 def _decode_image(cv2, content: bytes, source: str):

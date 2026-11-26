@@ -24,6 +24,7 @@ jobs:
           --exclude='.git/'
           --exclude='.venv/'
           --exclude='output/'
+          --exclude='models/'
           "$GITHUB_WORKSPACE/"
           /home/khanh/p3_cccd/
 

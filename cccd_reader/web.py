@@ -495,6 +495,16 @@ class CCCDHTTPServer(ThreadingHTTPServer):
         super().__init__(address, handler)
 
 
+def _preload_face_models() -> None:
+    try:
+        from .face_verification import preload_face_models
+
+        preload_face_models()
+        print("Model nhận diện khuôn mặt đã sẵn sàng.", flush=True)
+    except Exception as exc:
+        print(f"Chưa nạp được model khuôn mặt lúc khởi động: {exc}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Web server đọc CCCD qua đầu đọc NFC trên Pi")
     parser.add_argument("--host", default="127.0.0.1", help="Mặc định chỉ truy cập ngay trên Pi")
@@ -506,6 +516,11 @@ def main() -> int:
         parser.error("Đặt CCCD_WEB_PASSWORD trước khi mở server ra mạng LAN.")
 
     server = CCCDHTTPServer((args.host, args.port), WebHandler, password=password)
+    threading.Thread(
+        target=_preload_face_models,
+        name="face-model-preload",
+        daemon=True,
+    ).start()
     print(f"Web server đang chạy tại http://{args.host}:{args.port}")
     print("Nhấn Ctrl+C để dừng.")
     try:
