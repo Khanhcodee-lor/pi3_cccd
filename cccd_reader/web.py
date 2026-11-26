@@ -427,7 +427,7 @@ class WebHandler(BaseHTTPRequestHandler):
                     return
 
                 match_message = f"Khuôn mặt đã khớp (điểm {score:.3f})."
-                self.server.scan_manager.set_face_opening(f"{match_message} Đang điều khiển servo…", score)
+                self.server.scan_manager.set_face_opening(f"{match_message} Đang kích hoạt chốt cửa…", score)
                 try:
                     from .door import unlock_door
 

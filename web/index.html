@@ -153,10 +153,8 @@
     .face-result.success::before { background: #21805f; }
     .face-result.error { border-color: #f0d0cc; background: #fff2f0; color: var(--error); }
     .face-result.error::before { background: var(--error); }
-    .verification-actions { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 10px; margin-top: 12px; }
+    .verification-actions { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
     .verification-actions button { min-height: 48px; padding: 11px 14px; background: #e8f2ef; color: var(--green-dark); }
-    .verification-actions .verify { background: var(--green); color: white; }
-    .verification-actions .verify:hover:not(:disabled) { background: var(--green-dark); }
     .history-panel { margin-top: 20px; padding: 20px 22px; }
     .history-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .history-head h2 { margin: 0 0 4px; font-size: 1rem; }
@@ -229,7 +227,7 @@
       </div>
       <div class="step" id="flowStep3">
         <span class="step-number">3</span>
-        <div><strong>So khuôn mặt, mở cửa</strong><p>Đối chiếu ảnh CCCD với camera; servo chỉ chạy khi khuôn mặt khớp.</p></div>
+        <div><strong>Nhìn vào camera</strong><p>Sau khi quét thẻ, để trang mở và đứng trước camera; không cần bấm xác thực.</p></div>
       </div>
     </nav>
 
@@ -276,11 +274,11 @@
             <div class="result-head"><div><span class="step-kicker">Bước 3 · Xác thực khuôn mặt</span><h2>So sánh ảnh CCCD với camera</h2></div><button type="button" class="clear" id="clearButton">Quét thẻ khác</button></div>
             <div class="verification" id="verification" hidden>
               <h3>Đối chiếu khuôn mặt</h3>
-              <p id="verificationHint">So sánh ảnh chân dung trích từ CCCD với ảnh camera. Căn mặt vào khung, nhìn thẳng rồi bấm xác thực.</p>
+              <p id="verificationHint">Sau khi quét thẻ, camera Pi tự bật. Để trang web mở, rồi đứng trước camera và nhìn thẳng; không cần nhìn màn hình hay bấm xác thực.</p>
               <div class="verification-steps" aria-label="Cách xác thực">
                 <div class="verification-step"><span>1</span><div><strong>Ảnh trên CCCD</strong><small>Ảnh bên trái được đọc từ chip.</small></div></div>
-                <div class="verification-step"><span>2</span><div><strong>Căn mặt vào khung</strong><small>Ngồi ngay ngắn, nhìn thẳng camera.</small></div></div>
-                <div class="verification-step"><span>3</span><div><strong>Bấm xác thực</strong><small>Servo chỉ mở khi hai ảnh khớp.</small></div></div>
+                <div class="verification-step"><span>2</span><div><strong>Đứng trước camera Pi</strong><small>Đặt camera ngang tầm mắt, gần đầu đọc thẻ.</small></div></div>
+                <div class="verification-step"><span>3</span><div><strong>Chờ xác thực tự động</strong><small>Chốt cửa chỉ mở khi khuôn mặt khớp ảnh CCCD.</small></div></div>
               </div>
               <div class="face-compare">
                 <div class="face-compare-card">
@@ -290,13 +288,12 @@
                 <div class="face-compare-card">
                   <div class="face-compare-title"><span>2</span>Camera trực tiếp</div>
                   <div id="facePreviewSlot"></div>
-                  <p class="face-compare-note">Đặt mắt gần đường ngang và giữ toàn bộ khuôn mặt trong khung.</p>
+                  <p class="face-compare-note">Camera nên đặt ngang tầm mắt, gần đầu đọc. Đứng đối diện và nhìn thẳng.</p>
                 </div>
               </div>
-              <div class="face-result" id="faceVerificationState" role="status" aria-live="polite">Bật camera để bắt đầu căn mặt.</div>
+              <div class="face-result" id="faceVerificationState" role="status" aria-live="polite">Sau khi đọc thẻ, camera sẽ tự bật và bắt đầu xác thực.</div>
               <div class="verification-actions">
-                <button type="button" id="faceCameraButton">Bật camera xác thực</button>
-                <button type="button" class="verify" id="verifyButton" disabled>Xác thực &amp; mở cửa</button>
+                <button type="button" id="faceCameraButton">Tắt camera xác thực</button>
               </div>
             </div>
             <div class="result-content">
@@ -380,7 +377,6 @@
     const verification = document.getElementById('verification');
     const verificationHint = document.getElementById('verificationHint');
     const faceCameraButton = document.getElementById('faceCameraButton');
-    const verifyButton = document.getElementById('verifyButton');
     const historyToggle = document.getElementById('historyToggle');
     const historyContent = document.getElementById('historyContent');
     const historyRows = document.getElementById('historyRows');
@@ -392,6 +388,10 @@
     let cameraActive = false;
     let faceCameraActive = false;
     let faceCameraReady = false;
+    let automaticFaceVerification = false;
+    let faceVerificationInFlight = false;
+    let faceVerificationTimer = null;
+    let autoStartFaceForCurrentScan = false;
     let canVerifyFace = false;
     let currentStatus = 'idle';
     let currentTask = 1;
@@ -452,11 +452,9 @@
     function updateFaceControls() {
       const visible = result.style.display === 'block';
       verification.hidden = !visible;
-      faceCameraButton.hidden = !canVerifyFace;
-      verifyButton.hidden = !canVerifyFace;
-      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera xác thực';
+      faceCameraButton.hidden = !canVerifyFace || currentStatus === 'door_opened';
+      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera và xác thực tự động';
       faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'opening_door', 'door_opened'].includes(currentStatus);
-      verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'opening_door', 'door_opened'].includes(currentStatus);
     }
 
     function normalizeHistoryText(value) {
@@ -622,25 +620,32 @@
       }
       updateFaceControls();
       updateWorkflow();
+      if (state.status === 'error') autoStartFaceForCurrentScan = false;
+      if (state.status === 'done' && autoStartFaceForCurrentScan) {
+        autoStartFaceForCurrentScan = false;
+        if (canVerifyFace) startFaceCamera();
+      }
     }
 
     function updateFaceVerificationStatus(state) {
       if (!faceVerificationState) return;
       const messages = {
         verifying_face: ['busy', 'Đang đối chiếu ảnh CCCD với khuôn mặt trong khung…'],
-        opening_door: ['success', state.message || 'Khuôn mặt đã khớp. Đang điều khiển servo…'],
+        opening_door: ['success', state.message || 'Khuôn mặt đã khớp. Đang kích hoạt chốt cửa…'],
         face_matched: ['success', state.message || 'Khuôn mặt đã khớp.'],
         door_opened: ['success', state.message || 'Khuôn mặt đã khớp. Chốt cửa đã mở.'],
         face_mismatch: ['error', state.message || 'Khuôn mặt chưa khớp với ảnh trên CCCD.'],
         face_error: ['error', state.message || 'Không xác thực được khuôn mặt.'],
-        camera_ready: ['ready', state.message || 'Camera sẵn sàng. Căn mặt vào khung rồi bấm xác thực.'],
+        camera_ready: ['ready', state.message || 'Camera sẵn sàng. Nhìn thẳng vào camera; hệ thống sẽ tự xác thực.'],
       };
       let result = messages[state.status];
       if (!result && state.status === 'camera_scanning' && faceCameraActive) {
         result = ['busy', 'Đang bật camera xác thực…'];
       }
       if (!result && ['done', 'idle'].includes(state.status)) {
-        result = ['ready', canVerifyFace ? 'Ảnh CCCD đã sẵn sàng. Bật camera, căn mặt vào khung rồi xác thực.' : 'Chưa có ảnh chân dung trên CCCD để đối chiếu.'];
+        result = ['ready', canVerifyFace
+          ? (faceCameraActive ? 'Camera đang chờ khuôn mặt trước camera Pi.' : 'Ảnh CCCD đã sẵn sàng. Bật camera xác thực nếu chưa tự bật.')
+          : 'Chưa có ảnh chân dung trên CCCD để đối chiếu.'];
       }
       if (result) {
         faceVerificationState.className = `face-result ${result[0] === 'ready' ? '' : result[0]}`.trim();
@@ -727,7 +732,7 @@
         faceReferenceImage.src = `/api/photo?v=${Date.now()}`;
       }
       verificationHint.textContent = canVerifyFace
-        ? 'Đối chiếu ảnh chân dung CCCD bên trái với camera bên phải. Căn giữa khuôn mặt, nhìn thẳng rồi bấm xác thực.'
+        ? 'Camera Pi sẽ tự bật sau khi quét chip. Để trang web mở, đứng trước camera và nhìn thẳng; không cần nhìn màn hình hay bấm nút xác thực.'
         : 'Đã lưu dữ liệu CCCD nhưng không đọc được ảnh chân dung DG2 nên chưa thể xác thực khuôn mặt.';
       updateFaceVerificationStatus(state);
 
@@ -777,6 +782,7 @@
       mrzKeyDraft = mrzKey;
       cccdSaved = false;
       canVerifyFace = false;
+      autoStartFaceForCurrentScan = true;
       result.style.display = 'none';
       emptyState.style.display = 'grid';
       updateFaceControls();
@@ -797,6 +803,7 @@
         updateWorkflow();
         await pollStatus();
       } catch (error) {
+        autoStartFaceForCurrentScan = false;
         setStatus({ status: 'error', message: error.message });
       }
     });
@@ -922,28 +929,17 @@
     async function stopFaceCamera() {
       faceCameraActive = false;
       faceCameraReady = false;
+      automaticFaceVerification = false;
+      if (faceVerificationTimer) clearTimeout(faceVerificationTimer);
+      faceVerificationTimer = null;
       clearCameraPreview();
       await fetch('/api/face/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
       updateFaceControls();
     }
 
-    faceCameraButton.addEventListener('click', async () => {
-      if (faceCameraActive) {
-        const lastStatus = currentStatus;
-        await stopFaceCamera();
-        const keepStatus = ['door_opened', 'face_matched', 'face_mismatch'].includes(lastStatus);
-        setStatus({
-          status: keepStatus ? lastStatus : 'done',
-          message: keepStatus && lastStatus === 'face_matched'
-            ? 'Đã tắt camera. Khuôn mặt đã khớp; kiểm tra cấu hình servo nếu cửa chưa mở.'
-            : keepStatus && lastStatus === 'face_mismatch'
-              ? 'Đã tắt camera. Khuôn mặt chưa khớp với ảnh CCCD.'
-              : keepStatus
-                ? 'Đã tắt camera. Cửa đã mở cho lượt CCCD này.'
-                : 'Đã tắt camera xác thực.'
-        });
-        return;
-      }
+    async function startFaceCamera() {
+      if (faceCameraActive) return;
+      automaticFaceVerification = true;
       faceCameraButton.disabled = true;
       try {
         const response = await fetch('/api/face/camera/start', { method: 'POST', cache: 'no-store' });
@@ -954,12 +950,39 @@
         facePreviewSlot.append(cameraPreview);
         cameraPreview.classList.add('face-mode');
         cameraPreview.hidden = false;
-        setStatus({ status: 'camera_scanning', message: payload.message });
+        setStatus({
+          status: 'camera_scanning',
+          message: `${payload.message} Hãy đứng trước camera Pi; hệ thống sẽ tự xác thực khi thấy khuôn mặt.`
+        });
         refreshCameraFrame();
         pollFaceCameraReady();
       } catch (error) {
+        automaticFaceVerification = false;
         setStatus({ status: 'face_error', message: error.message });
       }
+    }
+
+    faceCameraButton.addEventListener('click', async () => {
+      if (!faceCameraActive) {
+        await startFaceCamera();
+        return;
+      }
+      const lastStatus = currentStatus;
+      automaticFaceVerification = false;
+      if (faceVerificationTimer) clearTimeout(faceVerificationTimer);
+      faceVerificationTimer = null;
+      await stopFaceCamera();
+      const keepStatus = ['door_opened', 'face_matched', 'face_mismatch'].includes(lastStatus);
+      setStatus({
+        status: keepStatus ? lastStatus : 'done',
+        message: keepStatus && lastStatus === 'face_matched'
+          ? 'Đã tắt camera. Khuôn mặt đã khớp; kiểm tra cấu hình bộ chốt nếu cửa chưa mở.'
+          : keepStatus && lastStatus === 'face_mismatch'
+            ? 'Đã tắt camera. Khuôn mặt chưa khớp với ảnh CCCD.'
+            : keepStatus
+              ? 'Đã tắt camera. Cửa đã mở cho lượt CCCD này.'
+              : 'Đã tắt camera xác thực.'
+      });
     });
 
     async function pollFaceCameraReady() {
@@ -970,19 +993,26 @@
         if (state.status === 'camera_error' || state.status === 'camera_stopped') {
           faceCameraActive = false;
           faceCameraReady = false;
+          automaticFaceVerification = false;
+          if (faceVerificationTimer) clearTimeout(faceVerificationTimer);
+          faceVerificationTimer = null;
           clearCameraPreview();
           setStatus({ status: state.status === 'camera_error' ? 'face_error' : 'done', message: state.message });
           return;
         }
         faceCameraReady = Boolean(state.frame_ready);
         if (faceCameraReady) {
-          statusText.textContent = 'Camera sẵn sàng. Căn mặt vào khung rồi bấm xác thực.';
-          updateFaceVerificationStatus({ status: 'camera_ready', message: 'Camera sẵn sàng. Căn mắt gần đường ngang, giữ trọn mặt trong khung rồi bấm xác thực.' });
+          statusText.textContent = 'Camera sẵn sàng. Đứng trước Pi; hệ thống đang tự tìm khuôn mặt.';
+          updateFaceVerificationStatus({ status: 'camera_ready', message: 'Camera sẵn sàng. Nhìn thẳng vào camera Pi; hệ thống sẽ tự xác thực.' });
           updateFaceControls();
+          scheduleAutomaticFaceVerification(400);
         }
       } catch (_) {
         faceCameraActive = false;
         faceCameraReady = false;
+        automaticFaceVerification = false;
+        if (faceVerificationTimer) clearTimeout(faceVerificationTimer);
+        faceVerificationTimer = null;
         clearCameraPreview();
         setStatus({ status: 'face_error', message: 'Mất kết nối tới webcam Pi.' });
         return;
@@ -990,9 +1020,19 @@
       if (faceCameraActive && !faceCameraReady) setTimeout(pollFaceCameraReady, 250);
     }
 
-    verifyButton.addEventListener('click', async () => {
-      verifyButton.disabled = true;
-      setStatus({ status: 'verifying_face', message: 'Đang so khớp khuôn mặt với ảnh trên CCCD…' });
+    function scheduleAutomaticFaceVerification(delay = 1000) {
+      if (!automaticFaceVerification || !faceCameraActive || !faceCameraReady || faceVerificationInFlight) return;
+      if (faceVerificationTimer) clearTimeout(faceVerificationTimer);
+      faceVerificationTimer = setTimeout(() => {
+        faceVerificationTimer = null;
+        runFaceVerification();
+      }, delay);
+    }
+
+    async function runFaceVerification() {
+      if (faceVerificationInFlight || !canVerifyFace || !faceCameraActive || !faceCameraReady) return;
+      faceVerificationInFlight = true;
+      setStatus({ status: 'verifying_face', message: 'Camera Pi đang tự so khớp khuôn mặt với ảnh CCCD…' });
       try {
         const response = await fetch('/api/face/verify', {
           method: 'POST',
@@ -1002,12 +1042,25 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Không xác thực được khuôn mặt.');
-        setStatus({ status: payload.status || (payload.unlocked ? 'door_opened' : payload.matched ? 'face_matched' : 'face_mismatch'), message: payload.message });
-        if (payload.unlocked) await stopFaceCamera();
+        const status = payload.status || (payload.unlocked ? 'door_opened' : payload.matched ? 'face_matched' : 'face_mismatch');
+        setStatus({ status, message: payload.message });
+        if (payload.unlocked) {
+          await stopFaceCamera();
+        } else if (payload.matched) {
+          automaticFaceVerification = false;
+          updateFaceControls();
+        }
       } catch (error) {
+        if (/model nhận diện|OpenCV|FaceDetectorYN|FaceRecognizerSF|Không tìm thấy model|CCCD_FACE_THRESHOLD|hết hạn|Cửa đã mở/i.test(error.message)) {
+          automaticFaceVerification = false;
+          if (faceCameraActive) await stopFaceCamera();
+        }
         setStatus({ status: 'face_error', message: error.message });
+      } finally {
+        faceVerificationInFlight = false;
+        scheduleAutomaticFaceVerification(1000);
       }
-    });
+    }
 
     window.addEventListener('pagehide', () => {
       if (cameraActive) {
