@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 
 from .secure_messaging import SecureMessaging
@@ -78,6 +79,13 @@ def extract_photo(dg2: bytes, output_dir: Path) -> Path | None:
     """Tìm ảnh JPEG/JPEG 2000 trong DG2 và ghi vào thư mục output."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    jpeg_photo = _largest_valid_jpeg(dg2)
+    if jpeg_photo is not None:
+        path = output_dir / "avatar.jpg"
+        path.write_bytes(jpeg_photo)
+        return path
+
+    # Giữ tương thích với JPEG mà Pillow không giải mã được nhưng OpenCV vẫn đọc được.
     jpeg_start = dg2.find(b"\xFF\xD8\xFF")
     if jpeg_start >= 0:
         jpeg_end = dg2.rfind(b"\xFF\xD9")
@@ -94,3 +102,44 @@ def extract_photo(dg2: bytes, output_dir: Path) -> Path | None:
         return path
 
     return None
+
+
+def _largest_valid_jpeg(dg2: bytes) -> bytes | None:
+    """Chọn JPEG đầy đủ, độ phân giải cao nhất nếu DG2 có thumbnail và ảnh gốc."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+
+    candidates: list[tuple[int, float, bytes]] = []
+    search_start = 0
+    while True:
+        jpeg_start = dg2.find(b"\xFF\xD8\xFF", search_start)
+        if jpeg_start < 0:
+            break
+
+        eoi_search = jpeg_start + 3
+        while True:
+            jpeg_end = dg2.find(b"\xFF\xD9", eoi_search)
+            if jpeg_end < 0:
+                break
+            encoded = dg2[jpeg_start : jpeg_end + 2]
+            try:
+                with Image.open(BytesIO(encoded)) as image:
+                    if image.format != "JPEG":
+                        raise ValueError("Không phải JPEG")
+                    image.load()
+                    width, height = image.size
+                if width > 0 and height > 0:
+                    aspect_deviation = abs((width / height) - 0.75)
+                    candidates.append((width * height, -aspect_deviation, encoded))
+                    break
+            except Exception:
+                eoi_search = jpeg_end + 2
+                continue
+
+        search_start = jpeg_start + 3
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda candidate: (candidate[0], candidate[1]))[2]

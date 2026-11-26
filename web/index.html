@@ -67,10 +67,8 @@
     .camera-preview img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; }
     .face-guide { display: none; }
     .camera-preview.face-mode .face-guide { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-    .face-guide-frame { position: relative; width: min(38%, 225px); height: 78%; border: 2px solid rgba(255,255,255,.94); border-radius: 48% 48% 42% 42%; box-shadow: 0 0 0 999px rgba(4,20,17,.22); }
-    .face-guide-frame::before, .face-guide-frame::after { position: absolute; content: ''; background: rgba(255,255,255,.55); }
-    .face-guide-frame::before { top: 39%; left: 8%; right: 8%; height: 1px; }
-    .face-guide-frame::after { top: 12%; bottom: 12%; left: 50%; width: 1px; }
+    .face-guide-frame { position: relative; width: min(42%, 250px); height: 78%; border: 1px solid rgba(255,255,255,.72); border-radius: 10px; box-shadow: 0 0 0 999px rgba(4,20,17,.12); }
+    .face-guide-frame::before, .face-guide-frame::after { display: none; }
     .face-guide-caption { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); padding: 5px 10px; border-radius: 999px; background: rgba(10,31,28,.78); color: white; font-size: .72rem; font-weight: 700; white-space: nowrap; }
     .document-guide { display: none; }
     .camera-preview.mrz-mode .document-guide { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
@@ -139,7 +137,7 @@
     .face-compare-card { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: white; }
     .face-compare-title { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: .82rem; font-weight: 800; }
     .face-compare-title span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--mint); color: var(--green-dark); font-size: .72rem; }
-    .face-reference { display: grid; place-items: center; min-height: 205px; height: 290px; overflow: hidden; border-radius: 9px; background: #edf3f1; }
+    .face-reference { position: relative; display: grid; place-items: center; min-height: 205px; height: 290px; overflow: hidden; border-radius: 9px; background: #edf3f1; }
     .face-reference img { display: block; width: 100%; height: 100%; max-height: 305px; object-fit: contain; }
     .face-reference img[hidden] { display: none; }
     .face-reference-fallback { padding: 16px; color: var(--muted); font-size: .78rem; text-align: center; }
@@ -158,49 +156,49 @@
     .verification-actions button { min-height: 48px; padding: 11px 14px; background: #e8f2ef; color: var(--green-dark); }
     .face-dialog {
       width: min(1480px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px);
-      overflow: auto; padding: 0; border: 1px solid rgba(139, 255, 232, .28); border-radius: 20px;
-      background: #071619; color: #e9fffb; box-shadow: 0 28px 100px rgba(0, 0, 0, .58);
+      overflow: auto; padding: 0; border: 1px solid #354346; border-radius: 14px;
+      background: #121a1c; color: #e7ecea; box-shadow: 0 24px 80px rgba(0, 0, 0, .52);
     }
-    .face-dialog::backdrop { background: rgba(2, 9, 14, .86); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px); }
+    .face-dialog::backdrop { background: rgba(3, 8, 10, .8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
     .face-dialog-shell { padding: clamp(16px, 2.4vw, 32px); }
     .face-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
-    .face-dialog-header .step-kicker { color: #5debd0; }
+    .face-dialog-header .step-kicker { color: #80b7a7; }
     .face-dialog-header h2 { margin: 0 0 6px; font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -.025em; }
-    .face-dialog-header p { max-width: 850px; margin: 0; color: #a7c7c3; font-size: .9rem; line-height: 1.55; }
-    .face-dialog-close { flex: none; min-height: 42px; padding: 9px 14px; border: 1px solid rgba(157, 226, 216, .2); background: #132c30; color: #d9f8f2; }
+    .face-dialog-header p { max-width: 850px; margin: 0; color: #aab7b4; font-size: .9rem; line-height: 1.55; }
+    .face-dialog-close { flex: none; min-height: 42px; padding: 9px 14px; border: 1px solid #3d4c4e; background: #202b2d; color: #dce6e3; }
     .face-dialog .verification { margin: 0; padding: 0; border: 0; background: transparent; }
     .face-dialog .verification[hidden] { display: none; }
     .face-dialog .verification-steps { gap: 10px; margin-top: 0; }
-    .face-dialog .verification-step { border-color: rgba(157, 226, 216, .18); background: #0d2226; }
+    .face-dialog .verification-step { border-color: #344346; background: #1a2426; }
     .face-dialog .verification-step > span:first-child,
-    .face-dialog .face-compare-title span { background: #123b3c; color: #7ff5dd; }
+    .face-dialog .face-compare-title span { background: #293c3a; color: #9bd1bd; }
     .face-dialog .verification-step strong,
-    .face-dialog .face-compare-title { color: #e9fffb; }
+    .face-dialog .face-compare-title { color: #e7ecea; }
     .face-dialog .verification-step small,
-    .face-dialog .face-compare-note { color: #9bbab6; }
+    .face-dialog .face-compare-note { color: #aab7b4; }
     .face-dialog .face-compare { position: relative; isolation: isolate; overflow: hidden; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
-    .face-dialog .face-compare-card { position: relative; z-index: 0; overflow: hidden; padding: 12px; border-color: rgba(157, 226, 216, .2); background: #0d2226; }
-    .face-dialog .face-reference { height: clamp(280px, 50vh, 560px); border: 1px solid rgba(127, 245, 221, .14); background: #09191c; }
-    .face-dialog .face-reference img { max-height: none; object-fit: contain; }
-    .face-dialog .face-reference-fallback { color: #9bbab6; }
-    .face-dialog .face-compare-card .camera-preview { height: clamp(280px, 50vh, 560px); border-color: rgba(127, 245, 221, .14); background: #09191c; }
+    .face-dialog .face-compare-card { position: relative; z-index: 0; overflow: hidden; padding: 12px; border-color: #354346; background: #1a2426; }
+    .face-dialog .face-reference { width: min(100%, 420px); height: clamp(300px, 48vh, 500px); margin-inline: auto; border: 1px solid #354346; background: #20282a; }
+    .face-dialog .face-reference img { width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: contain; }
+    .face-dialog .face-reference-fallback { color: #aab7b4; }
+    .face-dialog .face-compare-card .camera-preview { height: clamp(300px, 48vh, 500px); border-color: #354346; background: #20282a; }
     .face-dialog .face-compare-card .camera-preview img { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; }
     .face-dialog .face-compare-note { min-height: 1.4em; }
-    .face-dialog[data-scanning="true"] .face-compare::after {
-      position: absolute; z-index: 5; top: -24%; right: 0; left: 0; height: 26%; content: ''; pointer-events: none;
-      border-bottom: 1px solid rgba(205, 255, 248, .95);
-      background: linear-gradient(180deg, transparent 0%, rgba(48, 255, 220, .035) 50%, rgba(48, 255, 220, .18) 93%, rgba(205, 255, 248, .28) 100%);
-      box-shadow: 0 8px 32px rgba(0, 255, 220, .36);
-      animation: face-laser-sweep 2.4s linear infinite;
+    .face-dialog[data-scanning="true"] .face-reference::after,
+    .face-dialog[data-scanning="true"] .face-compare-card .camera-preview::after {
+      position: absolute; z-index: 8; top: 0; right: 0; left: 0; height: 1px; content: ''; pointer-events: none;
+      background: rgba(137, 218, 190, .78); box-shadow: 0 0 7px rgba(137, 218, 190, .42);
+      animation: face-image-scan 3.2s ease-in-out infinite alternate;
     }
-    @keyframes face-laser-sweep { to { top: 106%; } }
-    .face-dialog .face-result { border-color: rgba(157, 226, 216, .18); background: #10272b; color: #bbd8d3; }
-    .face-dialog .face-result.busy { border-color: rgba(255, 207, 100, .36); background: #302918; color: #f5dda4; }
-    .face-dialog .face-result.success { border-color: rgba(100, 226, 174, .34); background: #123329; color: #a9f5d3; }
-    .face-dialog .face-result.error { border-color: rgba(255, 133, 119, .32); background: #351e20; color: #ffc3bb; }
-    .face-dialog .verification-actions button { border: 1px solid rgba(157, 226, 216, .18); background: #132c30; color: #d9f8f2; }
+    @keyframes face-image-scan { to { top: calc(100% - 1px); } }
+    .face-dialog .face-result { border-color: #354346; background: #1a2426; color: #c3cecb; }
+    .face-dialog .face-result.busy { border-color: #77653b; background: #302b20; color: #e8d6a8; }
+    .face-dialog .face-result.success { border-color: #426e5a; background: #203329; color: #b8ddc8; }
+    .face-dialog .face-result.error { border-color: #754d48; background: #332422; color: #e9bbb4; }
+    .face-dialog .verification-actions button { border: 1px solid #3d4c4e; background: #202b2d; color: #dce6e3; }
     @media (prefers-reduced-motion: reduce) {
-      .face-dialog[data-scanning="true"] .face-compare::after { animation-duration: 8s; }
+      .face-dialog[data-scanning="true"] .face-reference::after,
+      .face-dialog[data-scanning="true"] .face-compare-card .camera-preview::after { animation-duration: 8s; }
     }
     .history-panel { margin-top: 20px; padding: 20px 22px; }
     .history-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -455,7 +453,7 @@
     let automaticFaceVerification = false;
     let faceVerificationInFlight = false;
     let faceVerificationTimer = null;
-    let autoStartFaceForCurrentScan = false;
+    let faceDialogRecordId = null;
     let canVerifyFace = false;
     let currentStatus = 'idle';
     let currentTask = 1;
@@ -700,11 +698,6 @@
       }
       updateFaceControls();
       updateWorkflow();
-      if (state.status === 'error') autoStartFaceForCurrentScan = false;
-      if (state.status === 'done' && autoStartFaceForCurrentScan) {
-        autoStartFaceForCurrentScan = false;
-        if (canVerifyFace) startFaceCamera();
-      }
     }
 
     function updateFaceVerificationStatus(state) {
@@ -822,6 +815,11 @@
       showTask(3);
       updateFaceControls();
       updateWorkflow();
+      if (canVerifyFace && faceDialogRecordId !== recordId) {
+        faceDialogRecordId = recordId;
+        openFaceDialog();
+        if (state.status === 'done' && !faceCameraActive) startFaceCamera();
+      }
     }
 
     async function pollStatus() {
@@ -862,7 +860,7 @@
       mrzKeyDraft = mrzKey;
       cccdSaved = false;
       canVerifyFace = false;
-      autoStartFaceForCurrentScan = true;
+      faceDialogRecordId = null;
       result.style.display = 'none';
       emptyState.style.display = 'grid';
       updateFaceControls();
@@ -883,7 +881,6 @@
         updateWorkflow();
         await pollStatus();
       } catch (error) {
-        autoStartFaceForCurrentScan = false;
         setStatus({ status: 'error', message: error.message });
       }
     });
@@ -1178,6 +1175,7 @@
       cccdSaved = false;
       mrzKeyDraft = '';
       keyInput.value = '';
+      faceDialogRecordId = null;
       mrzReady = /^[0-9A-Z<]{24}$/.test(keyInput.value);
       canVerifyFace = false;
       showTask(1);
