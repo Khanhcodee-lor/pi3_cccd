@@ -63,8 +63,15 @@
     .photo-button:hover:not(:disabled) { background: var(--mint); }
     .camera-button { width: 100%; min-height: 48px; margin-top: 14px; padding: 12px 18px; background: var(--green); color: #fff; }
     .camera-button:hover:not(:disabled) { background: var(--green-dark); }
-    .camera-preview { overflow: hidden; margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: #152b2a; }
+    .camera-preview { position: relative; overflow: hidden; margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: #152b2a; }
     .camera-preview img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: contain; }
+    .face-guide { display: none; }
+    .camera-preview.face-mode .face-guide { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .face-guide-frame { position: relative; width: min(38%, 225px); height: 78%; border: 2px solid rgba(255,255,255,.94); border-radius: 48% 48% 42% 42%; box-shadow: 0 0 0 999px rgba(4,20,17,.22); }
+    .face-guide-frame::before, .face-guide-frame::after { position: absolute; content: ''; background: rgba(255,255,255,.55); }
+    .face-guide-frame::before { top: 39%; left: 8%; right: 8%; height: 1px; }
+    .face-guide-frame::after { top: 12%; bottom: 12%; left: 50%; width: 1px; }
+    .face-guide-caption { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); padding: 5px 10px; border-radius: 999px; background: rgba(10,31,28,.78); color: white; font-size: .72rem; font-weight: 700; white-space: nowrap; }
     .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     button { border: 0; border-radius: 10px; cursor: pointer; font: inherit; font-weight: 750; }
     .primary { width: 100%; min-height: 48px; margin-top: 17px; padding: 12px 18px; background: var(--green); color: #fff; transition: background .15s, transform .15s; }
@@ -95,12 +102,37 @@
     .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
     .result-head h2 { margin: 0; font-size: 1rem; }
     .clear { padding: 8px 11px; background: #f0f5f3; color: var(--green-dark); font-size: .78rem; }
-    .result-content { display: grid; grid-template-columns: 170px 1fr; gap: 22px; padding: 22px; }
-    .verification { margin: 0 22px 22px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #f7fbf9; }
-    .verification h3 { margin: 0 0 6px; font-size: .95rem; }
+    .result-content { padding: 0 22px 22px; }
+    .card-data-heading { margin: 0 0 14px; padding-top: 16px; border-top: 1px solid var(--line); font-size: .9rem; }
+    .verification { margin: 0 22px 22px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: #f7fbf9; }
+    .verification h3 { margin: 0 0 6px; font-size: 1.08rem; }
     .verification p { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.55; }
-    .verification-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-    .verification-actions button { min-height: 44px; padding: 10px 12px; background: #e8f2ef; color: var(--green-dark); }
+    .verification-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 16px; }
+    .verification-step { display: flex; gap: 9px; align-items: flex-start; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+    .verification-step > span:first-child { display: grid; place-items: center; flex: none; width: 23px; height: 23px; border-radius: 50%; background: var(--mint); color: var(--green-dark); font-size: .72rem; font-weight: 800; }
+    .verification-step strong { display: block; margin: 1px 0 2px; font-size: .77rem; }
+    .verification-step small { display: block; color: var(--muted); font-size: .7rem; line-height: 1.4; }
+    .face-compare { display: grid; grid-template-columns: minmax(170px, .7fr) minmax(0, 1.3fr); gap: 12px; margin-top: 14px; }
+    .face-compare-card { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: white; }
+    .face-compare-title { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: .82rem; font-weight: 800; }
+    .face-compare-title span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--mint); color: var(--green-dark); font-size: .72rem; }
+    .face-reference { display: grid; place-items: center; min-height: 205px; height: 290px; overflow: hidden; border-radius: 9px; background: #edf3f1; }
+    .face-reference img { display: block; width: 100%; height: 100%; max-height: 305px; object-fit: contain; }
+    .face-reference img[hidden] { display: none; }
+    .face-reference-fallback { padding: 16px; color: var(--muted); font-size: .78rem; text-align: center; }
+    .face-reference-fallback[hidden] { display: none; }
+    .face-compare-card .camera-preview { margin: 0; }
+    .face-compare-note { margin: 8px 1px 0 !important; font-size: .74rem !important; }
+    .face-result { display: flex; align-items: flex-start; gap: 9px; margin-top: 13px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+    .face-result::before { content: ''; flex: none; width: 9px; height: 9px; margin-top: 4px; border-radius: 50%; background: #97aaa5; }
+    .face-result.busy { border-color: #ead9ad; background: #fffaf0; color: #725b2e; }
+    .face-result.busy::before { background: #d29b31; animation: pulse 1.2s infinite; }
+    .face-result.success { border-color: #b6d9cd; background: var(--mint); color: var(--green-dark); }
+    .face-result.success::before { background: #21805f; }
+    .face-result.error { border-color: #f0d0cc; background: #fff2f0; color: var(--error); }
+    .face-result.error::before { background: var(--error); }
+    .verification-actions { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 10px; margin-top: 12px; }
+    .verification-actions button { min-height: 48px; padding: 11px 14px; background: #e8f2ef; color: var(--green-dark); }
     .verification-actions .verify { background: var(--green); color: white; }
     .verification-actions .verify:hover:not(:disabled) { background: var(--green-dark); }
     .history-panel { margin-top: 20px; padding: 20px 22px; }
@@ -142,9 +174,15 @@
       .history-panel { padding: 16px; }
       .history-head { align-items: flex-start; flex-direction: column; }
       .empty { min-height: 205px; }
+      .verification { margin: 0 16px 16px; padding: 16px; }
+      .verification-steps { grid-template-columns: 1fr; }
+      .face-compare { grid-template-columns: 1fr; }
+      .face-reference { height: 230px; }
+      .face-compare-card .camera-preview img { max-height: 260px; }
+      .verification-actions { grid-template-columns: 1fr; }
     }
     @media (max-width: 460px) {
-      .result-content { grid-template-columns: 100px 1fr; gap: 15px; padding: 16px; }
+      .result-content { padding: 0 16px 16px; }
       .fields { gap: 14px 12px; }
       .name { font-size: 1.05rem; }
       .result-head { padding: 16px; }
@@ -169,7 +207,7 @@
       </div>
       <div class="step" id="flowStep3">
         <span class="step-number">3</span>
-        <div><strong>So khuôn mặt, mở cửa</strong><p>Sau khi lưu xong, bật camera xác thực rồi bấm so khớp.</p></div>
+        <div><strong>So khuôn mặt, mở cửa</strong><p>Đối chiếu ảnh CCCD với camera; servo chỉ chạy khi khuôn mặt khớp.</p></div>
       </div>
     </nav>
 
@@ -187,7 +225,7 @@
         <input id="mrzKey" name="mrz_key_info" type="text" maxlength="24" minlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="••••••••••••••••••••••••">
         <p class="hint">Mã gồm số giấy tờ, ngày sinh, ngày hết hạn và ký tự kiểm tra. Giữ dấu <code>&lt;</code>, bỏ khoảng trắng.</p>
         <button class="camera-button" id="cameraButton" type="button">Quét mã MRZ bằng camera Pi</button>
-        <div id="mrzPreviewSlot"><div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ webcam Pi"></div></div>
+        <div id="mrzPreviewSlot"><div class="camera-preview" id="cameraPreview" hidden><img id="cameraImage" alt="Hình xem trước từ webcam Pi"><div class="face-guide" aria-hidden="true"><span class="face-guide-frame"></span><span class="face-guide-caption">Căn giữa khuôn mặt</span></div></div></div>
         <p class="hint">Dùng camera nối với Raspberry Pi. Đưa mặt sau CCCD vào khung hình; camera tự dừng khi đọc xong.</p>
         <label class="visually-hidden" for="mrzPhoto">Chọn ảnh mặt sau CCCD</label>
         <input class="visually-hidden" id="mrzPhoto" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
@@ -214,19 +252,35 @@
             <div><div class="empty-icon" aria-hidden="true">▣</div><strong>Chưa có dữ liệu thẻ</strong><span>Thông tin thẻ sẽ hiện sau khi quét NFC thành công.</span></div>
           </div>
           <div class="result" id="result">
-            <div class="result-head"><div><span class="step-kicker">Bước 3 · Hoàn tất</span><h2>Thông tin trên thẻ</h2></div><button type="button" class="clear" id="clearButton">Quét thẻ khác</button></div>
-            <div class="result-content">
-              <div class="photo-wrap" id="photoWrap"><span class="photo-fallback">Không có ảnh chân dung</span></div>
-              <div class="fields" id="fields"></div>
-            </div>
+            <div class="result-head"><div><span class="step-kicker">Bước 3 · Xác thực khuôn mặt</span><h2>So sánh ảnh CCCD với camera</h2></div><button type="button" class="clear" id="clearButton">Quét thẻ khác</button></div>
             <div class="verification" id="verification" hidden>
-              <h3>Xác thực khuôn mặt</h3>
-              <p id="verificationHint">Dữ liệu CCCD đã được lưu. Bật camera, đặt khuôn mặt vào khung hình rồi xác thực.</p>
-              <div id="facePreviewSlot"></div>
-              <div class="verification-actions">
-                <button type="button" id="faceCameraButton">Bật camera để thấy khuôn mặt</button>
-                <button type="button" class="verify" id="verifyButton" disabled>So khớp và mở cửa</button>
+              <h3>Đối chiếu khuôn mặt</h3>
+              <p id="verificationHint">So sánh ảnh chân dung trích từ CCCD với ảnh camera. Căn mặt vào khung, nhìn thẳng rồi bấm xác thực.</p>
+              <div class="verification-steps" aria-label="Cách xác thực">
+                <div class="verification-step"><span>1</span><div><strong>Ảnh trên CCCD</strong><small>Ảnh bên trái được đọc từ chip.</small></div></div>
+                <div class="verification-step"><span>2</span><div><strong>Căn mặt vào khung</strong><small>Ngồi ngay ngắn, nhìn thẳng camera.</small></div></div>
+                <div class="verification-step"><span>3</span><div><strong>Bấm xác thực</strong><small>Servo chỉ mở khi hai ảnh khớp.</small></div></div>
               </div>
+              <div class="face-compare">
+                <div class="face-compare-card">
+                  <div class="face-compare-title"><span>1</span>Ảnh chân dung CCCD</div>
+                  <div class="face-reference"><img id="faceReferenceImage" alt="Ảnh chân dung trích từ CCCD" hidden><span class="face-reference-fallback" id="faceReferenceFallback">Chưa có ảnh chân dung trên thẻ.</span></div>
+                </div>
+                <div class="face-compare-card">
+                  <div class="face-compare-title"><span>2</span>Camera trực tiếp</div>
+                  <div id="facePreviewSlot"></div>
+                  <p class="face-compare-note">Đặt mắt gần đường ngang và giữ toàn bộ khuôn mặt trong khung.</p>
+                </div>
+              </div>
+              <div class="face-result" id="faceVerificationState" role="status" aria-live="polite">Bật camera để bắt đầu căn mặt.</div>
+              <div class="verification-actions">
+                <button type="button" id="faceCameraButton">Bật camera xác thực</button>
+                <button type="button" class="verify" id="verifyButton" disabled>Xác thực &amp; mở cửa</button>
+              </div>
+            </div>
+            <div class="result-content">
+              <h3 class="card-data-heading">Thông tin CCCD đã đọc</h3>
+              <div class="fields" id="fields"></div>
             </div>
             <details><summary>Xem MRZ gốc</summary><pre id="rawMrz"></pre></details>
           </div>
@@ -267,6 +321,9 @@
     const photoInput = document.getElementById('mrzPhoto');
     const cameraPreview = document.getElementById('cameraPreview');
     const cameraImage = document.getElementById('cameraImage');
+    const faceReferenceImage = document.getElementById('faceReferenceImage');
+    const faceReferenceFallback = document.getElementById('faceReferenceFallback');
+    const faceVerificationState = document.getElementById('faceVerificationState');
     const mrzPreviewSlot = document.getElementById('mrzPreviewSlot');
     const facePreviewSlot = document.getElementById('facePreviewSlot');
     const statusBox = document.getElementById('status');
@@ -309,6 +366,7 @@
     let cccdSaved = false;
     let cameraFrameBusy = false;
     let cameraFrameUrl = null;
+    let displayedRecordId = null;
     let historyLoaded = false;
     let historyLoading = false;
     let historyCursor = null;
@@ -317,6 +375,7 @@
 
     function clearCameraPreview() {
       cameraPreview.hidden = true;
+      cameraPreview.classList.remove('face-mode');
       cameraImage.removeAttribute('src');
       if (cameraFrameUrl) URL.revokeObjectURL(cameraFrameUrl);
       cameraFrameUrl = null;
@@ -334,7 +393,7 @@
       verification.hidden = !visible;
       faceCameraButton.hidden = !canVerifyFace;
       verifyButton.hidden = !canVerifyFace;
-      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera để thấy khuôn mặt';
+      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera xác thực';
       faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'opening_door', 'door_opened'].includes(currentStatus);
       verifyButton.disabled = !canVerifyFace || !faceCameraActive || !faceCameraReady || ['verifying_face', 'opening_door', 'door_opened'].includes(currentStatus);
     }
@@ -481,6 +540,7 @@
       if (state.status === 'done' || state.status === 'camera_done' || state.status === 'opening_door' || state.status === 'face_matched' || state.status === 'door_opened') statusBox.classList.add('success');
       if (['error', 'camera_error', 'face_error', 'face_mismatch'].includes(state.status)) statusBox.classList.add('error');
       statusText.textContent = state.message || '';
+      updateFaceVerificationStatus(state);
       photoButton.disabled = scanBusy || state.status === 'camera_scanning';
       keyInput.disabled = scanBusy;
       cameraButton.disabled = scanBusy || (state.status === 'authenticating' && !cameraActive);
@@ -500,6 +560,30 @@
       }
       updateFaceControls();
       updateWorkflow();
+    }
+
+    function updateFaceVerificationStatus(state) {
+      if (!faceVerificationState) return;
+      const messages = {
+        verifying_face: ['busy', 'Đang đối chiếu ảnh CCCD với khuôn mặt trong khung…'],
+        opening_door: ['success', state.message || 'Khuôn mặt đã khớp. Đang điều khiển servo…'],
+        face_matched: ['success', state.message || 'Khuôn mặt đã khớp.'],
+        door_opened: ['success', state.message || 'Khuôn mặt đã khớp. Chốt cửa đã mở.'],
+        face_mismatch: ['error', state.message || 'Khuôn mặt chưa khớp với ảnh trên CCCD.'],
+        face_error: ['error', state.message || 'Không xác thực được khuôn mặt.'],
+        camera_ready: ['ready', state.message || 'Camera sẵn sàng. Căn mặt vào khung rồi bấm xác thực.'],
+      };
+      let result = messages[state.status];
+      if (!result && state.status === 'camera_scanning' && faceCameraActive) {
+        result = ['busy', 'Đang bật camera xác thực…'];
+      }
+      if (!result && ['done', 'idle'].includes(state.status)) {
+        result = ['ready', canVerifyFace ? 'Ảnh CCCD đã sẵn sàng. Bật camera, căn mặt vào khung rồi xác thực.' : 'Chưa có ảnh chân dung trên CCCD để đối chiếu.'];
+      }
+      if (result) {
+        faceVerificationState.className = `face-result ${result[0] === 'ready' ? '' : result[0]}`.trim();
+        faceVerificationState.textContent = result[1];
+      }
     }
 
     keyInput.addEventListener('input', () => {
@@ -555,33 +639,36 @@
       const data = state.data;
       cccdSaved = true;
       canVerifyFace = state.can_verify_face !== false;
-      document.getElementById('fields').replaceChildren();
-      addField('Họ và tên', data.full_name, true, true);
-      addField('Số giấy tờ', data.document_number);
-      addField('Giới tính', data.sex);
-      addField('Ngày sinh', data.date_of_birth);
-      addField('Quốc tịch', data.nationality);
-      addField('Ngày hết hạn', data.expiry_date);
-      addField('Loại giấy tờ', data.document_type);
-      addField('Nơi cấp', data.issuing_country);
-      document.getElementById('rawMrz').textContent = data.mrz || (state.mrz_lines || []).join('\n');
+      const recordId = state.record_id || data.document_number || data.full_name;
+      if (displayedRecordId !== recordId) {
+        displayedRecordId = recordId;
+        document.getElementById('fields').replaceChildren();
+        addField('Họ và tên', data.full_name, true, true);
+        addField('Số giấy tờ', data.document_number);
+        addField('Giới tính', data.sex);
+        addField('Ngày sinh', data.date_of_birth);
+        addField('Quốc tịch', data.nationality);
+        addField('Ngày hết hạn', data.expiry_date);
+        addField('Loại giấy tờ', data.document_type);
+        addField('Nơi cấp', data.issuing_country);
+        document.getElementById('rawMrz').textContent = data.mrz || (state.mrz_lines || []).join('\n');
+        faceReferenceImage.hidden = false;
+        faceReferenceFallback.hidden = true;
+        faceReferenceImage.onload = () => {
+          faceReferenceImage.hidden = false;
+          faceReferenceFallback.hidden = true;
+        };
+        faceReferenceImage.onerror = () => {
+          faceReferenceImage.hidden = true;
+          faceReferenceFallback.hidden = false;
+        };
+        faceReferenceImage.src = `/api/photo?v=${Date.now()}`;
+      }
       verificationHint.textContent = canVerifyFace
-        ? `Đã lưu dữ liệu CCCD lên Firebase${state.photo_in_firebase ? ' cùng ảnh chân dung' : '; ảnh chân dung chưa được lưu lên Firebase'}. Bật camera, nhìn thẳng vào camera rồi xác thực.`
-        : 'Đã lưu dữ liệu CCCD lên Firebase nhưng không đọc được ảnh chân dung DG2 nên chưa thể xác thực khuôn mặt.';
+        ? 'Đối chiếu ảnh chân dung CCCD bên trái với camera bên phải. Căn giữa khuôn mặt, nhìn thẳng rồi bấm xác thực.'
+        : 'Đã lưu dữ liệu CCCD nhưng không đọc được ảnh chân dung DG2 nên chưa thể xác thực khuôn mặt.';
+      updateFaceVerificationStatus(state);
 
-      const photoWrap = document.getElementById('photoWrap');
-      photoWrap.replaceChildren();
-      const image = document.createElement('img');
-      image.alt = 'Ảnh chân dung trên CCCD';
-      image.src = `/api/photo?v=${Date.now()}`;
-      image.onerror = () => {
-        photoWrap.replaceChildren();
-        const message = document.createElement('span');
-        message.className = 'photo-fallback';
-        message.textContent = 'Thẻ không có ảnh hoặc ảnh dùng định dạng trình duyệt chưa hỗ trợ.';
-        photoWrap.append(message);
-      };
-      photoWrap.append(image);
       emptyState.style.display = 'none';
       result.style.display = 'block';
       mrzKeyDraft = '';
@@ -775,8 +862,19 @@
 
     faceCameraButton.addEventListener('click', async () => {
       if (faceCameraActive) {
+        const lastStatus = currentStatus;
         await stopFaceCamera();
-        setStatus({ status: currentStatus === 'door_opened' ? 'door_opened' : 'done', message: 'Đã tắt camera xác thực.' });
+        const keepStatus = ['door_opened', 'face_matched', 'face_mismatch'].includes(lastStatus);
+        setStatus({
+          status: keepStatus ? lastStatus : 'done',
+          message: keepStatus && lastStatus === 'face_matched'
+            ? 'Đã tắt camera. Khuôn mặt đã khớp; kiểm tra cấu hình servo nếu cửa chưa mở.'
+            : keepStatus && lastStatus === 'face_mismatch'
+              ? 'Đã tắt camera. Khuôn mặt chưa khớp với ảnh CCCD.'
+              : keepStatus
+                ? 'Đã tắt camera. Cửa đã mở cho lượt CCCD này.'
+                : 'Đã tắt camera xác thực.'
+        });
         return;
       }
       faceCameraButton.disabled = true;
@@ -787,6 +885,7 @@
         faceCameraActive = true;
         faceCameraReady = false;
         facePreviewSlot.append(cameraPreview);
+        cameraPreview.classList.add('face-mode');
         cameraPreview.hidden = false;
         setStatus({ status: 'camera_scanning', message: payload.message });
         refreshCameraFrame();
@@ -810,8 +909,8 @@
         }
         faceCameraReady = Boolean(state.frame_ready);
         if (faceCameraReady) {
-          statusText.textContent = 'Camera đã sẵn sàng. Nhìn thẳng vào camera rồi bấm “So khớp và mở cửa”.';
-          verificationHint.textContent = 'Camera đang hoạt động. Nhìn thẳng vào khung hình rồi bấm “So khớp và mở cửa”.';
+          statusText.textContent = 'Camera sẵn sàng. Căn mặt vào khung rồi bấm xác thực.';
+          updateFaceVerificationStatus({ status: 'camera_ready', message: 'Camera sẵn sàng. Căn mắt gần đường ngang, giữ trọn mặt trong khung rồi bấm xác thực.' });
           updateFaceControls();
         }
       } catch (_) {
