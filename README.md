@@ -54,13 +54,14 @@ Sau khi quét NFC thành công, server lưu các trường họ tên, số giấ
 1. Tạo project Firebase và bật Cloud Firestore.
 2. Trong Firebase Console, vào **Databases & Storage → Storage → Get started** để tạo bucket. Cloud Storage for Firebase hiện yêu cầu gói Blaze pay-as-you-go; mức dùng vượt phần miễn phí có thể bị tính phí. Xem [yêu cầu gói và bucket](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024?hl=vi).
 3. Tạo service account cho Firebase Admin SDK, tải JSON key về Pi và giữ file này ngoài Git. Service account cần quyền đọc/ghi/xóa object trong bucket, ví dụ vai trò **Storage Object Admin**.
-4. Cài thư viện trong virtualenv và tải hai model OpenCV Zoo (khoảng 37 MB):
+4. Cài thư viện trong virtualenv:
 
 ```bash
 cd ~/p3_cccd
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m cccd_reader.download_face_models
 ```
+
+Khi web server khởi động, ứng dụng tự kiểm tra, tải nếu thiếu và nạp sẵn hai model nhận diện khuôn mặt vào bộ nhớ. Lần tải đầu cần Pi có Internet; các file được giữ trong `models/` và không bị xóa khi deploy code. Có thể chủ động tải trước bằng `.venv/bin/python -m cccd_reader.download_face_models`.
 
 5. Thêm cấu hình vào `~/.config/p3_cccd/web.env`, đặt quyền file chỉ cho user Pi đọc:
 
