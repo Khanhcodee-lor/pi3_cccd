@@ -123,6 +123,7 @@
     .result { display: none; }
     .result-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
     .result-head h2 { margin: 0; font-size: 1rem; }
+    .result-head-actions { display: flex; align-items: center; gap: 8px; }
     .clear { padding: 8px 11px; background: #f0f5f3; color: var(--green-dark); font-size: .78rem; }
     .result-content { padding: 0 22px 22px; }
     .card-data-heading { margin: 0 0 14px; padding-top: 16px; border-top: 1px solid var(--line); font-size: .9rem; }
@@ -155,6 +156,52 @@
     .face-result.error::before { background: var(--error); }
     .verification-actions { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
     .verification-actions button { min-height: 48px; padding: 11px 14px; background: #e8f2ef; color: var(--green-dark); }
+    .face-dialog {
+      width: min(1480px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px);
+      overflow: auto; padding: 0; border: 1px solid rgba(139, 255, 232, .28); border-radius: 20px;
+      background: #071619; color: #e9fffb; box-shadow: 0 28px 100px rgba(0, 0, 0, .58);
+    }
+    .face-dialog::backdrop { background: rgba(2, 9, 14, .86); backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px); }
+    .face-dialog-shell { padding: clamp(16px, 2.4vw, 32px); }
+    .face-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+    .face-dialog-header .step-kicker { color: #5debd0; }
+    .face-dialog-header h2 { margin: 0 0 6px; font-size: clamp(1.35rem, 3vw, 2rem); letter-spacing: -.025em; }
+    .face-dialog-header p { max-width: 850px; margin: 0; color: #a7c7c3; font-size: .9rem; line-height: 1.55; }
+    .face-dialog-close { flex: none; min-height: 42px; padding: 9px 14px; border: 1px solid rgba(157, 226, 216, .2); background: #132c30; color: #d9f8f2; }
+    .face-dialog .verification { margin: 0; padding: 0; border: 0; background: transparent; }
+    .face-dialog .verification[hidden] { display: none; }
+    .face-dialog .verification-steps { gap: 10px; margin-top: 0; }
+    .face-dialog .verification-step { border-color: rgba(157, 226, 216, .18); background: #0d2226; }
+    .face-dialog .verification-step > span:first-child,
+    .face-dialog .face-compare-title span { background: #123b3c; color: #7ff5dd; }
+    .face-dialog .verification-step strong,
+    .face-dialog .face-compare-title { color: #e9fffb; }
+    .face-dialog .verification-step small,
+    .face-dialog .face-compare-note { color: #9bbab6; }
+    .face-dialog .face-compare { position: relative; isolation: isolate; overflow: hidden; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+    .face-dialog .face-compare-card { position: relative; z-index: 0; overflow: hidden; padding: 12px; border-color: rgba(157, 226, 216, .2); background: #0d2226; }
+    .face-dialog .face-reference { height: clamp(280px, 50vh, 560px); border: 1px solid rgba(127, 245, 221, .14); background: #09191c; }
+    .face-dialog .face-reference img { max-height: none; object-fit: contain; }
+    .face-dialog .face-reference-fallback { color: #9bbab6; }
+    .face-dialog .face-compare-card .camera-preview { height: clamp(280px, 50vh, 560px); border-color: rgba(127, 245, 221, .14); background: #09191c; }
+    .face-dialog .face-compare-card .camera-preview img { width: 100%; height: 100%; aspect-ratio: auto; object-fit: contain; }
+    .face-dialog .face-compare-note { min-height: 1.4em; }
+    .face-dialog[data-scanning="true"] .face-compare::after {
+      position: absolute; z-index: 5; top: -24%; right: 0; left: 0; height: 26%; content: ''; pointer-events: none;
+      border-bottom: 1px solid rgba(205, 255, 248, .95);
+      background: linear-gradient(180deg, transparent 0%, rgba(48, 255, 220, .035) 50%, rgba(48, 255, 220, .18) 93%, rgba(205, 255, 248, .28) 100%);
+      box-shadow: 0 8px 32px rgba(0, 255, 220, .36);
+      animation: face-laser-sweep 2.4s linear infinite;
+    }
+    @keyframes face-laser-sweep { to { top: 106%; } }
+    .face-dialog .face-result { border-color: rgba(157, 226, 216, .18); background: #10272b; color: #bbd8d3; }
+    .face-dialog .face-result.busy { border-color: rgba(255, 207, 100, .36); background: #302918; color: #f5dda4; }
+    .face-dialog .face-result.success { border-color: rgba(100, 226, 174, .34); background: #123329; color: #a9f5d3; }
+    .face-dialog .face-result.error { border-color: rgba(255, 133, 119, .32); background: #351e20; color: #ffc3bb; }
+    .face-dialog .verification-actions button { border: 1px solid rgba(157, 226, 216, .18); background: #132c30; color: #d9f8f2; }
+    @media (prefers-reduced-motion: reduce) {
+      .face-dialog[data-scanning="true"] .face-compare::after { animation-duration: 8s; }
+    }
     .history-panel { margin-top: 20px; padding: 20px 22px; }
     .history-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
     .history-head h2 { margin: 0 0 4px; font-size: 1rem; }
@@ -200,12 +247,22 @@
       .face-reference { height: 230px; }
       .face-compare-card .camera-preview img { max-height: 260px; }
       .verification-actions { grid-template-columns: 1fr; }
+      .face-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); border-radius: 14px; }
+      .face-dialog-shell { padding: 14px; }
+      .face-dialog-header { align-items: center; gap: 8px; }
+      .face-dialog-close { min-height: 40px; padding: 8px 10px; font-size: .8rem; }
+      .face-dialog .verification-steps { grid-template-columns: 1fr; gap: 6px; }
+      .face-dialog .verification-step { padding: 7px 9px; }
+      .face-dialog .face-compare { grid-template-columns: 1fr; gap: 10px; }
+      .face-dialog .face-reference,
+      .face-dialog .face-compare-card .camera-preview { height: min(42vh, 360px); }
     }
     @media (max-width: 460px) {
       .result-content { padding: 0 16px 16px; }
       .fields { gap: 14px 12px; }
       .name { font-size: 1.05rem; }
       .result-head { padding: 16px; }
+      .result-head-actions { align-items: stretch; flex-direction: column; }
       details { margin: 0 16px 18px; }
     }
   </style>
@@ -271,31 +328,7 @@
             <div><div class="empty-icon" aria-hidden="true">▣</div><strong>Chưa có dữ liệu thẻ</strong><span>Thông tin thẻ sẽ hiện sau khi quét NFC thành công.</span></div>
           </div>
           <div class="result" id="result">
-            <div class="result-head"><div><span class="step-kicker">Bước 3 · Xác thực khuôn mặt</span><h2>So sánh ảnh CCCD với camera</h2></div><button type="button" class="clear" id="clearButton">Quét thẻ khác</button></div>
-            <div class="verification" id="verification" hidden>
-              <h3>Đối chiếu khuôn mặt</h3>
-              <p id="verificationHint">Sau khi quét thẻ, camera Pi tự bật. Để trang web mở, rồi đứng trước camera và nhìn thẳng; không cần nhìn màn hình hay bấm xác thực.</p>
-              <div class="verification-steps" aria-label="Cách xác thực">
-                <div class="verification-step"><span>1</span><div><strong>Ảnh trên CCCD</strong><small>Ảnh bên trái được đọc từ chip.</small></div></div>
-                <div class="verification-step"><span>2</span><div><strong>Đứng trước camera Pi</strong><small>Đặt camera ngang tầm mắt, gần đầu đọc thẻ.</small></div></div>
-                <div class="verification-step"><span>3</span><div><strong>Chờ xác thực tự động</strong><small>Chốt cửa chỉ mở khi khuôn mặt khớp ảnh CCCD.</small></div></div>
-              </div>
-              <div class="face-compare">
-                <div class="face-compare-card">
-                  <div class="face-compare-title"><span>1</span>Ảnh chân dung CCCD</div>
-                  <div class="face-reference"><img id="faceReferenceImage" alt="Ảnh chân dung trích từ CCCD" hidden><span class="face-reference-fallback" id="faceReferenceFallback">Chưa có ảnh chân dung trên thẻ.</span></div>
-                </div>
-                <div class="face-compare-card">
-                  <div class="face-compare-title"><span>2</span>Camera trực tiếp</div>
-                  <div id="facePreviewSlot"></div>
-                  <p class="face-compare-note">Camera nên đặt ngang tầm mắt, gần đầu đọc. Đứng đối diện và nhìn thẳng.</p>
-                </div>
-              </div>
-              <div class="face-result" id="faceVerificationState" role="status" aria-live="polite">Sau khi đọc thẻ, camera sẽ tự bật và bắt đầu xác thực.</div>
-              <div class="verification-actions">
-                <button type="button" id="faceCameraButton">Tắt camera xác thực</button>
-              </div>
-            </div>
+            <div class="result-head"><div><span class="step-kicker">Bước 3 · Xác thực khuôn mặt</span><h2>So sánh ảnh CCCD với camera</h2></div><div class="result-head-actions"><button type="button" class="clear" id="faceDialogOpenButton" hidden>Hiện màn hình xác thực</button><button type="button" class="clear" id="clearButton">Quét thẻ khác</button></div></div>
             <div class="result-content">
               <h3 class="card-data-heading">Thông tin CCCD đã đọc</h3>
               <div class="fields" id="fields"></div>
@@ -330,6 +363,34 @@
 
     <p class="privacy">MRZ key info không được lưu vào trình duyệt hoặc ghi vào log. Thông tin chữ nằm trong Firestore; ảnh DG2 nằm trong Firebase Storage riêng tư. Ảnh webcam chỉ được xử lý trên Pi, không lưu lại.</p>
   </main>
+  <dialog class="face-dialog" id="faceDialog" aria-labelledby="faceDialogTitle" data-scanning="false">
+    <section class="face-dialog-shell">
+      <header class="face-dialog-header">
+        <div><span class="step-kicker">Bước 3 · Xác thực khuôn mặt</span><h2 id="faceDialogTitle">Đối chiếu khuôn mặt</h2><p id="verificationHint">Sau khi quét thẻ, camera Pi tự bật. Để trang web mở, rồi đứng trước camera và nhìn thẳng; không cần nhìn màn hình hay bấm xác thực.</p></div>
+        <button type="button" class="face-dialog-close" id="faceDialogCloseButton">Thu nhỏ</button>
+      </header>
+      <div class="verification" id="verification" hidden>
+        <div class="verification-steps" aria-label="Cách xác thực">
+          <div class="verification-step"><span>1</span><div><strong>Ảnh trên CCCD</strong><small>Ảnh bên trái được đọc từ chip.</small></div></div>
+          <div class="verification-step"><span>2</span><div><strong>Đứng trước camera Pi</strong><small>Đặt camera ngang tầm mắt, gần đầu đọc thẻ.</small></div></div>
+          <div class="verification-step"><span>3</span><div><strong>Chờ xác thực tự động</strong><small>Chốt cửa chỉ mở khi khuôn mặt khớp ảnh CCCD.</small></div></div>
+        </div>
+        <div class="face-compare">
+          <div class="face-compare-card">
+            <div class="face-compare-title"><span>1</span>Ảnh chân dung CCCD</div>
+            <div class="face-reference"><img id="faceReferenceImage" alt="Ảnh chân dung trích từ CCCD" hidden><span class="face-reference-fallback" id="faceReferenceFallback">Chưa có ảnh chân dung trên thẻ.</span></div>
+          </div>
+          <div class="face-compare-card">
+            <div class="face-compare-title"><span>2</span>Camera trực tiếp</div>
+            <div id="facePreviewSlot"></div>
+            <p class="face-compare-note">Camera nên đặt ngang tầm mắt, gần đầu đọc. Đứng đối diện và nhìn thẳng.</p>
+          </div>
+        </div>
+        <div class="face-result" id="faceVerificationState" role="status" aria-live="polite">Sau khi đọc thẻ, camera sẽ tự bật và bắt đầu xác thực.</div>
+        <div class="verification-actions"><button type="button" id="faceCameraButton">Thử lại xác thực</button></div>
+      </div>
+    </section>
+  </dialog>
   <div class="camera-overlay" id="mrzCameraOverlay" role="dialog" aria-modal="true" aria-labelledby="mrzCameraTitle" hidden>
     <section class="camera-dialog">
       <div class="camera-dialog-head">
@@ -357,6 +418,9 @@
     const faceReferenceFallback = document.getElementById('faceReferenceFallback');
     const faceVerificationState = document.getElementById('faceVerificationState');
     const facePreviewSlot = document.getElementById('facePreviewSlot');
+    const faceDialog = document.getElementById('faceDialog');
+    const faceDialogOpenButton = document.getElementById('faceDialogOpenButton');
+    const faceDialogCloseButton = document.getElementById('faceDialogCloseButton');
     const statusBox = document.getElementById('status');
     const statusText = document.getElementById('statusText');
     const progress = document.getElementById('progress');
@@ -451,10 +515,26 @@
 
     function updateFaceControls() {
       const visible = result.style.display === 'block';
-      verification.hidden = !visible;
+      verification.hidden = !visible || !canVerifyFace;
+      faceDialog.dataset.scanning = faceCameraActive && faceCameraReady && automaticFaceVerification ? 'true' : 'false';
+      faceDialogOpenButton.hidden = !visible || !canVerifyFace || faceDialog.open;
       faceCameraButton.hidden = !canVerifyFace || currentStatus === 'door_opened';
-      faceCameraButton.textContent = faceCameraActive ? 'Tắt camera xác thực' : 'Bật camera và xác thực tự động';
+      faceCameraButton.textContent = faceCameraActive ? 'Dừng camera xác thực' : 'Thử lại xác thực';
       faceCameraButton.disabled = !canVerifyFace || ['verifying_face', 'opening_door', 'door_opened'].includes(currentStatus);
+    }
+
+    function openFaceDialog() {
+      if (!faceDialog.open) {
+        if (typeof faceDialog.showModal === 'function') faceDialog.showModal();
+        else faceDialog.setAttribute('open', '');
+      }
+      updateFaceControls();
+    }
+
+    function closeFaceDialog() {
+      if (faceDialog.open && typeof faceDialog.close === 'function') faceDialog.close();
+      else faceDialog.removeAttribute('open');
+      updateFaceControls();
     }
 
     function normalizeHistoryText(value) {
@@ -926,19 +1006,23 @@
       if (cameraActive) setTimeout(pollCameraRecognition, 650);
     }
 
-    async function stopFaceCamera() {
+    async function stopFaceCamera(preserveFrame = false) {
       faceCameraActive = false;
       faceCameraReady = false;
       automaticFaceVerification = false;
       if (faceVerificationTimer) clearTimeout(faceVerificationTimer);
       faceVerificationTimer = null;
-      clearCameraPreview();
+      cameraPreview.classList.remove('face-mode');
+      if (!preserveFrame) clearCameraPreview();
+      faceDialog.dataset.scanning = 'false';
       await fetch('/api/face/camera/stop', { method: 'POST', cache: 'no-store' }).catch(() => {});
       updateFaceControls();
     }
 
     async function startFaceCamera() {
       if (faceCameraActive) return;
+      if (!canVerifyFace) return;
+      openFaceDialog();
       automaticFaceVerification = true;
       faceCameraButton.disabled = true;
       try {
@@ -959,6 +1043,7 @@
       } catch (error) {
         automaticFaceVerification = false;
         setStatus({ status: 'face_error', message: error.message });
+        updateFaceControls();
       }
     }
 
@@ -984,6 +1069,13 @@
               : 'Đã tắt camera xác thực.'
       });
     });
+
+    faceDialogOpenButton.addEventListener('click', () => {
+      openFaceDialog();
+      if (!faceCameraActive && currentStatus !== 'door_opened') startFaceCamera();
+    });
+    faceDialogCloseButton.addEventListener('click', closeFaceDialog);
+    faceDialog.addEventListener('close', updateFaceControls);
 
     async function pollFaceCameraReady() {
       if (!faceCameraActive) return;
@@ -1044,11 +1136,8 @@
         if (!response.ok) throw new Error(payload.error || 'Không xác thực được khuôn mặt.');
         const status = payload.status || (payload.unlocked ? 'door_opened' : payload.matched ? 'face_matched' : 'face_mismatch');
         setStatus({ status, message: payload.message });
-        if (payload.unlocked) {
-          await stopFaceCamera();
-        } else if (payload.matched) {
-          automaticFaceVerification = false;
-          updateFaceControls();
+        if (payload.unlocked || payload.matched) {
+          await stopFaceCamera(true);
         }
       } catch (error) {
         if (/model nhận diện|OpenCV|FaceDetectorYN|FaceRecognizerSF|Không tìm thấy model|CCCD_FACE_THRESHOLD|hết hạn|Cửa đã mở/i.test(error.message)) {
@@ -1083,6 +1172,7 @@
     historySearch.addEventListener('input', filterHistoryRows);
 
     document.getElementById('clearButton').addEventListener('click', async () => {
+      closeFaceDialog();
       if (faceCameraActive) await stopFaceCamera();
       await fetch('/api/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       cccdSaved = false;
