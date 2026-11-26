@@ -9,7 +9,7 @@ from typing import Callable
 from .bac import perform_bac
 from .icao import DG1_FID, DG2_FID, extract_photo, read_binary_file, select_emrtd_application
 from .mrz import parse_mrz
-from .reader import list_readers, wait_for_card
+from .reader import list_readers, wait_for_card_with_uid
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -23,10 +23,22 @@ class ScanResult:
     photo_path: Path | None
     dg1_size: int
     dg2_size: int
+    card_uid: str | None = None
+    mrz_key_source: str = "provided"
 
 
-def scan_card(mrz_key_info: str, progress: ProgressCallback | None = None) -> ScanResult:
-    """Chờ thẻ, xác thực BAC, đọc DG1/DG2 và trả về dữ liệu đã tách."""
+class MrzRequiredError(RuntimeError):
+    def __init__(self, message: str, *, uid_available: bool):
+        super().__init__(message)
+        self.uid_available = uid_available
+
+
+def scan_card(
+    mrz_key_info: str | None,
+    progress: ProgressCallback | None = None,
+    ignored_uid: str | None = None,
+) -> ScanResult:
+    """Tìm MRZ đã đăng ký nếu có, rồi xác thực BAC và đọc DG1/DG2."""
 
     def report(stage: str, message: str, done: int | None = None, total: int | None = None):
         if progress is not None:
@@ -39,8 +51,30 @@ def scan_card(mrz_key_info: str, progress: ProgressCallback | None = None) -> Sc
     reader = available_readers[0]
     connection = None
     try:
-        report("waiting_for_card", f"Đầu đọc {reader}. Đặt CCCD lên đầu đọc và giữ yên.")
-        connection = wait_for_card(reader)
+        report("waiting_for_card", f"Đầu đọc {reader}. Đưa CCCD vào khe và giữ yên.")
+        connection, card_uid = wait_for_card_with_uid(reader, ignored_uid=ignored_uid)
+
+        mrz_key_source = "provided"
+        if not mrz_key_info:
+            if not card_uid:
+                raise MrzRequiredError(
+                    "Đầu đọc chưa lấy được mã NFC của thẻ. Hãy đăng ký MRZ bằng ảnh điện thoại; "
+                    "cần kiểm tra đầu đọc có hỗ trợ nhận diện UID để dùng lại tự động.",
+                    uid_available=False,
+                )
+            from .firebase_store import find_cccd_mrz_by_uid
+
+            try:
+                registered_key = find_cccd_mrz_by_uid(card_uid)
+            except Exception as exc:
+                raise RuntimeError(f"Không tra được MRZ đã đăng ký trên Firebase: {exc}") from exc
+            if not registered_key:
+                raise MrzRequiredError(
+                    "Thẻ này chưa đăng ký MRZ. Giữ CCCD trên đầu đọc, rồi dùng điện thoại chụp mặt sau để đăng ký một lần.",
+                    uid_available=True,
+                )
+            mrz_key_info = registered_key
+            mrz_key_source = "firebase"
 
         report("authenticating", "Đã nhận thẻ. Đang xác thực BAC…")
         select_emrtd_application(connection)
@@ -70,7 +104,15 @@ def scan_card(mrz_key_info: str, progress: ProgressCallback | None = None) -> Sc
             (OUTPUT_DIR / "dg2.bin").write_bytes(dg2)
 
         report("done", "Đọc CCCD thành công.")
-        return ScanResult(fields, mrz_lines, photo_path, len(dg1), len(dg2))
+        return ScanResult(
+            fields,
+            mrz_lines,
+            photo_path,
+            len(dg1),
+            len(dg2),
+            card_uid=card_uid,
+            mrz_key_source=mrz_key_source,
+        )
     finally:
         if connection is not None:
             try:

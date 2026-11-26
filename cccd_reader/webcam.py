@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import os
 import pwd
 import select
@@ -62,6 +63,7 @@ class WebcamManager:
             "status": "camera_stopped",
             "message": "Camera Pi đang tắt.",
             "mrz_key_info": None,
+            "camera_mode": None,
         }
 
     def snapshot(self) -> dict:
@@ -77,7 +79,11 @@ class WebcamManager:
             age = time.monotonic() - self._frame_at if self._frame_at is not None else None
             return self._frame, age
 
-    def start(self, recognize_mrz: bool = True) -> tuple[bool, str]:
+    def start(
+        self,
+        recognize_mrz: bool = True,
+        blocked_mrz_key: str | None = None,
+    ) -> tuple[bool, str]:
         if recognize_mrz and not shutil.which("tesseract"):
             return False, "Pi chưa cài Tesseract OCR. Chạy: sudo apt install tesseract-ocr"
 
@@ -130,6 +136,7 @@ class WebcamManager:
                     else "Đang mở camera Pi. Camera tự tắt sau 2 phút."
                 ),
                 "mrz_key_info": None,
+                "camera_mode": "face" if not recognize_mrz else "mrz",
             }
             stop_event = self._stop_event
 
@@ -142,7 +149,7 @@ class WebcamManager:
         if recognize_mrz:
             threading.Thread(
                 target=self._recognize_loop,
-                args=(stop_event,),
+                args=(stop_event, blocked_mrz_key),
                 daemon=True,
                 name="cccd-mrz-ocr",
             ).start()
@@ -162,6 +169,7 @@ class WebcamManager:
                 "status": "camera_stopped",
                 "message": "Camera Pi đã tắt.",
                 "mrz_key_info": None,
+                "camera_mode": None,
             }
             self._condition.notify_all()
         self._terminate(process)
@@ -189,6 +197,7 @@ class WebcamManager:
                 "status": "camera_error",
                 "message": message,
                 "mrz_key_info": None,
+                "camera_mode": None,
             }
             stop_event.set()
             self._condition.notify_all()
@@ -265,6 +274,7 @@ class WebcamManager:
                                             "status": "camera_stopped",
                                             "message": "Camera tự tắt sau 2 phút. Bấm bật lại nếu cần quét tiếp.",
                                             "mrz_key_info": None,
+                                            "camera_mode": None,
                                         }
                                         stop_event.set()
                                         self._condition.notify_all()
@@ -380,9 +390,14 @@ class WebcamManager:
             f"Chạy `sudo usermod -aG video {username}` rồi khởi động lại Pi."
         )
 
-    def _recognize_loop(self, stop_event: threading.Event) -> None:
+    def _recognize_loop(
+        self,
+        stop_event: threading.Event,
+        blocked_mrz_key: str | None = None,
+    ) -> None:
         last_sequence = 0
         last_attempt = 0.0
+        no_mrz_attempts = 0
         while not stop_event.is_set():
             with self._condition:
                 self._condition.wait_for(
@@ -403,10 +418,28 @@ class WebcamManager:
             try:
                 key = read_mrz_key_live(image)
             except ValueError:
+                if blocked_mrz_key:
+                    no_mrz_attempts += 1
+                    if no_mrz_attempts >= 5:
+                        blocked_mrz_key = None
+                        with self._condition:
+                            if self._stop_event is stop_event and not stop_event.is_set():
+                                self._state["message"] = (
+                                    "Đã lấy thẻ trước khỏi camera. Đưa CCCD tiếp theo vào khe."
+                                )
                 continue
             except RuntimeError as exc:
                 self._set_camera_error(stop_event, str(exc))
                 return
+
+            no_mrz_attempts = 0
+            if blocked_mrz_key and hmac.compare_digest(key, blocked_mrz_key):
+                with self._condition:
+                    if self._stop_event is stop_event and not stop_event.is_set():
+                        self._state["message"] = (
+                            "Lấy thẻ vừa quét khỏi camera để Pi nhận thẻ tiếp theo."
+                        )
+                continue
 
             with self._condition:
                 if self._stop_event is not stop_event or stop_event.is_set():
@@ -417,6 +450,7 @@ class WebcamManager:
                     "status": "camera_done",
                     "message": "Đã nhận diện MRZ. Mã đã được điền vào ô.",
                     "mrz_key_info": key,
+                    "camera_mode": None,
                 }
                 stop_event.set()
                 self._condition.notify_all()

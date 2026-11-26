@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .scanner import ScanResult, scan_card
+from .scanner import MrzRequiredError, ScanResult, scan_card
 from .webcam import WebcamManager
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -37,11 +37,12 @@ class ScanManager:
         self._lock = threading.Lock()
         self._photo_path: Path | None = None
         self._record_id: str | None = None
+        self._last_card_uid: str | None = None
         self._scan_finished_at: float | None = None
         self._face_verifying = False
         self._state = {
             "status": "idle",
-            "message": "Nhập MRZ key info rồi bắt đầu quét.",
+            "message": "Đưa CCCD vào khe. Thẻ đã đăng ký sẽ tự tra Firebase.",
             "progress": None,
             "data": None,
         }
@@ -50,9 +51,9 @@ class ScanManager:
         with self._lock:
             return deepcopy(self._state)
 
-    def start(self, mrz_key_info: str) -> tuple[bool, str]:
-        key = "".join(mrz_key_info.split()).upper()
-        if len(key) != 24 or any(char not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<" for char in key):
+    def start(self, mrz_key_info: str | None) -> tuple[bool, str]:
+        key = "".join(mrz_key_info.split()).upper() if mrz_key_info else None
+        if key and (len(key) != 24 or any(char not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<" for char in key)):
             return False, "MRZ key info cần đúng 24 ký tự gồm chữ in hoa, số hoặc dấu <."
 
         with self._lock:
@@ -64,12 +65,17 @@ class ScanManager:
             self._face_verifying = False
             self._state = {
                 "status": "waiting_for_card",
-                "message": "Đang chờ CCCD trên đầu đọc…",
+                "message": (
+                    "Đang tra thẻ đã đăng ký. Đưa CCCD vào khe và giữ yên…"
+                    if not key
+                    else "Đang chờ CCCD để đăng ký MRZ và đọc chip…"
+                ),
                 "progress": None,
                 "data": None,
             }
+            ignored_uid = self._last_card_uid if not key else None
 
-        thread = threading.Thread(target=self._scan, args=(key,), daemon=True)
+        thread = threading.Thread(target=self._scan, args=(key, ignored_uid), daemon=True)
         thread.start()
         return True, "Đã bắt đầu quét."
 
@@ -83,7 +89,7 @@ class ScanManager:
             self._face_verifying = False
             self._state = {
                 "status": "idle",
-                "message": "Nhập MRZ key info rồi bắt đầu quét.",
+                "message": "Đưa CCCD vào khe. Thẻ đã đăng ký sẽ tự đọc; thẻ mới cần đăng ký MRZ một lần.",
                 "progress": None,
                 "data": None,
             }
@@ -106,14 +112,28 @@ class ScanManager:
         with self._lock:
             self._state.update({"status": stage, "message": message, "progress": progress})
 
-    def _scan(self, key: str) -> None:
+    def _scan(self, key: str | None, ignored_uid: str | None) -> None:
         try:
-            result: ScanResult = scan_card(key, progress=self._update)
-            from .firebase_store import save_cccd
+            result: ScanResult = scan_card(key, progress=self._update, ignored_uid=ignored_uid)
+            from .firebase_store import save_cccd, save_cccd_mrz
 
             record_id = save_cccd(result.fields)
+            mrz_registered = result.mrz_key_source == "firebase"
+            mrz_registration_error = None
+            if result.mrz_key_source == "provided":
+                if result.card_uid:
+                    try:
+                        save_cccd_mrz(record_id, result.card_uid, key or "")
+                        mrz_registered = True
+                    except Exception as exc:
+                        mrz_registration_error = str(exc) or "Không lưu được MRZ đã mã hóa lên Firebase."
+                else:
+                    mrz_registration_error = (
+                        "Đầu đọc chưa trả mã NFC của thẻ nên chưa thể liên kết MRZ để tự dùng lần sau."
+                    )
             photo_in_firebase = False
             photo_message = ""
+            photo_upload_error = None
             if result.photo_path is not None:
                 try:
                     from .firebase_store import save_cccd_photo
@@ -122,22 +142,43 @@ class ScanManager:
                     photo_in_firebase = True
                     photo_message = " Đã lưu cả ảnh chân dung lên Firebase Storage."
                 except Exception as exc:
-                    photo_message = f" Ảnh chân dung chưa được lưu lên Firebase: {exc}"
+                    photo_upload_error = str(exc) or "Lỗi không xác định khi tải ảnh lên Firebase Storage."
+                    photo_message = f" Ảnh chân dung chưa được lưu lên Firebase: {photo_upload_error}"
             else:
                 photo_message = " Không trích xuất được ảnh DG2, chỉ lưu dữ liệu chữ."
+            registry_message = (
+                " Đã đăng ký MRZ đã mã hóa cho thẻ này; lần sau chỉ cần đưa thẻ vào khe."
+                if mrz_registered
+                else f" Chưa đăng ký được MRZ để dùng lại: {mrz_registration_error}"
+            )
             with self._lock:
+                if result.card_uid:
+                    self._last_card_uid = result.card_uid
                 self._photo_path = result.photo_path
                 self._record_id = record_id
                 self._scan_finished_at = time.monotonic()
                 self._state = {
                     "status": "done",
-                    "message": "Đọc CCCD thành công và đã lưu dữ liệu lên Firebase." + photo_message,
+                    "message": "Đọc CCCD thành công và đã lưu dữ liệu lên Firebase." + registry_message + photo_message,
                     "progress": None,
                     "data": result.fields,
                     "mrz_lines": result.mrz_lines,
                     "record_id": record_id,
                     "photo_in_firebase": photo_in_firebase,
+                    "photo_upload_error": photo_upload_error,
                     "can_verify_face": result.photo_path is not None,
+                    "mrz_registered": mrz_registered,
+                    "mrz_registration_error": mrz_registration_error,
+                }
+        except MrzRequiredError as exc:
+            with self._lock:
+                self._photo_path = None
+                self._state = {
+                    "status": "needs_enrollment",
+                    "message": str(exc),
+                    "progress": None,
+                    "data": None,
+                    "uid_available": exc.uid_available,
                 }
         except Exception as exc:
             with self._lock:
@@ -310,9 +351,20 @@ class WebHandler(BaseHTTPRequestHandler):
             self._send_json(413, {"error": "Yêu cầu quá lớn."})
             return
         if path == "/api/camera/start":
-            if length:
-                self.rfile.read(length)
-            started, message = self.server.webcam_manager.start()
+            try:
+                payload = json.loads(self.rfile.read(length) or b"{}") if length else {}
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._send_json(400, {"error": "Dữ liệu bật camera không hợp lệ."})
+                return
+            blocked_mrz_key = payload.get("blocked_mrz_key") if isinstance(payload, dict) else None
+            if blocked_mrz_key is not None:
+                blocked_mrz_key = str(blocked_mrz_key).replace(" ", "").upper()
+                if len(blocked_mrz_key) != 24 or any(
+                    char not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<" for char in blocked_mrz_key
+                ):
+                    self._send_json(400, {"error": "MRZ của thẻ vừa quét không hợp lệ."})
+                    return
+            started, message = self.server.webcam_manager.start(blocked_mrz_key=blocked_mrz_key)
             if not started:
                 self._send_json(409 if message.startswith("Camera Pi đang chạy") else 503, {"error": message})
                 return
@@ -383,8 +435,8 @@ class WebHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/scan":
-            value = payload.get("mrz_key_info", "")
-            if not isinstance(value, str):
+            value = payload.get("mrz_key_info")
+            if value is not None and not isinstance(value, str):
                 self._send_json(400, {"error": "MRZ key info không hợp lệ."})
                 return
             try:

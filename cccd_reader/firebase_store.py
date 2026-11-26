@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import mimetypes
 import os
 from pathlib import Path
 import re
+import secrets
 import threading
 import uuid
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 _LOCK = threading.Lock()
+_MRZ_KEY_LOCK = threading.Lock()
 _FIELDS = (
     "full_name",
     "document_number",
@@ -100,6 +105,109 @@ def save_cccd(fields: dict[str, str]) -> str:
 def ensure_firebase_ready() -> None:
     """Fail before reading a card when the SDK or service account is not configured."""
     _firestore_client()
+
+
+def _mrz_master_key() -> bytes:
+    configured_path = os.environ.get("CCCD_MRZ_KEY_FILE", "").strip()
+    key_path = Path(configured_path).expanduser() if configured_path else (
+        Path.home() / ".config" / "p3_cccd" / "mrz-encryption.key"
+    )
+    with _MRZ_KEY_LOCK:
+        key_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            descriptor = os.open(key_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            key = key_path.read_bytes()
+        else:
+            key = secrets.token_bytes(32)
+            with os.fdopen(descriptor, "wb") as key_file:
+                key_file.write(key)
+                key_file.flush()
+                os.fsync(key_file.fileno())
+        if len(key) != 32:
+            raise RuntimeError(
+                f"Khóa mã hóa MRZ tại {key_path} phải có đúng 32 byte. Không xóa khóa này sau khi đăng ký thẻ."
+            )
+        try:
+            os.chmod(key_path, 0o600)
+        except OSError:
+            pass
+        return key
+
+
+def _card_uid_hash(card_uid: str, master_key: bytes) -> str:
+    try:
+        uid = bytes.fromhex(card_uid)
+    except ValueError as exc:
+        raise ValueError("Đầu đọc trả mã NFC không hợp lệ.") from exc
+    if len(uid) < 4 or len(uid) > 16:
+        raise ValueError("Độ dài mã NFC của thẻ không hợp lệ.")
+    lookup_key = hmac.new(master_key, b"cccd-nfc-uid-lookup-v1", hashlib.sha256).digest()
+    return hmac.new(lookup_key, uid, hashlib.sha256).hexdigest()
+
+
+def _encrypt_mrz_key(mrz_key_info: str, uid_hash: str, master_key: bytes) -> str:
+    key_info = "".join(mrz_key_info.split()).upper()
+    if len(key_info) != 24 or any(char not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<" for char in key_info):
+        raise ValueError("MRZ key info cần đúng 24 ký tự ICAO.")
+    encryption_key = hmac.new(master_key, b"cccd-mrz-aesgcm-v1", hashlib.sha256).digest()
+    nonce = secrets.token_bytes(12)
+    ciphertext = AESGCM(encryption_key).encrypt(
+        nonce,
+        key_info.encode("ascii"),
+        bytes.fromhex(uid_hash),
+    )
+    return (nonce + ciphertext).hex()
+
+
+def _decrypt_mrz_key(encrypted_value: str, uid_hash: str, master_key: bytes) -> str:
+    try:
+        sealed = bytes.fromhex(encrypted_value)
+        nonce, ciphertext = sealed[:12], sealed[12:]
+        encryption_key = hmac.new(master_key, b"cccd-mrz-aesgcm-v1", hashlib.sha256).digest()
+        plaintext = AESGCM(encryption_key).decrypt(nonce, ciphertext, bytes.fromhex(uid_hash))
+        key_info = plaintext.decode("ascii")
+    except Exception as exc:
+        raise RuntimeError(
+            "Không giải mã được MRZ đã đăng ký. Kiểm tra khóa mã hóa cục bộ trên Pi; "
+            "nếu khóa đã mất, cần đăng ký lại thẻ."
+        ) from exc
+    if len(key_info) != 24 or any(char not in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ<" for char in key_info):
+        raise RuntimeError("MRZ giải mã từ Firebase không hợp lệ; cần đăng ký lại thẻ.")
+    return key_info
+
+
+def save_cccd_mrz(record_id: str, card_uid: str, mrz_key_info: str) -> None:
+    """Store a UID lookup and encrypted BAC key; never write plaintext MRZ."""
+    if not re.fullmatch(r"[0-9a-f]{64}", record_id):
+        raise ValueError("Mã bản ghi CCCD không hợp lệ.")
+    master_key = _mrz_master_key()
+    uid_hash = _card_uid_hash(card_uid, master_key)
+    encrypted_key = _encrypt_mrz_key(mrz_key_info, uid_hash, master_key)
+    client, firestore = _firestore_client()
+    collection = os.environ.get("CCCD_ACCESS_COLLECTION", "cccd_card_access")
+    client.collection(collection).document(uid_hash).set({
+        "record_id": record_id,
+        "mrz_key_enc": encrypted_key,
+        "key_version": 1,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    })
+
+
+def find_cccd_mrz_by_uid(card_uid: str) -> str | None:
+    """Find and decrypt a registered MRZ using only the local Pi key."""
+    master_key = _mrz_master_key()
+    uid_hash = _card_uid_hash(card_uid, master_key)
+    collection = os.environ.get("CCCD_ACCESS_COLLECTION", "cccd_card_access")
+    client, _firestore = _firestore_client()
+    snapshot = client.collection(collection).document(uid_hash).get()
+    if not snapshot.exists:
+        return None
+    data = snapshot.to_dict() or {}
+    encrypted_key = data.get("mrz_key_enc")
+    if not isinstance(encrypted_key, str):
+        raise RuntimeError("Bản đăng ký NFC trên Firebase thiếu khóa MRZ; cần đăng ký lại thẻ.")
+    return _decrypt_mrz_key(encrypted_key, uid_hash, master_key)
 
 
 def save_cccd_photo(record_id: str, photo_path: Path) -> None:
